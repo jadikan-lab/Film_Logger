@@ -1,0 +1,1158 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Film Logger</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+<style>
+:root{
+  --amber:#c87533;--amber-l:#e8924a;--dark:#111111;--dark2:#1e1e1e;
+  --bg:#f2f0ec;--card:#fff;--border:#ddd9d2;
+  --green:#2e7d32;--red:#c62828;--blue:#1565c0;
+  --radius:12px;--tab-h:58px;--header-h:58px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);display:flex;flex-direction:column;height:100dvh}
+
+/* ── Header ── */
+#header{
+  background:var(--dark);color:#fff;
+  height:var(--header-h);padding:0 14px;
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+#header h1{font-size:1.05rem;font-weight:700;flex:1;letter-spacing:.01em}
+#header .logo{font-size:1.4rem;line-height:1}
+#headerCount{
+  background:var(--amber);color:#fff;
+  font-size:0.72rem;font-weight:700;
+  padding:3px 8px;border-radius:20px;letter-spacing:.02em;
+}
+#settingsBtn{
+  background:none;border:none;color:#fff;font-size:1.4rem;
+  cursor:pointer;padding:6px;border-radius:8px;line-height:1;
+}
+#settingsBtn:active{background:rgba(255,255,255,.15)}
+
+/* ── Tabs ── */
+#tabs{
+  display:flex;background:#fff;
+  border-bottom:2px solid var(--border);flex-shrink:0;
+  box-shadow:0 1px 4px rgba(0,0,0,.06);
+}
+.tab{
+  flex:1;height:var(--tab-h);border:none;background:none;cursor:pointer;
+  font-size:0.95rem;color:#888;
+  border-bottom:3px solid transparent;margin-bottom:-2px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  transition:color .15s;
+}
+.tab .tab-icon{font-size:1.2rem;line-height:1}
+.tab .tab-lbl{font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.tab.active{color:var(--amber);border-bottom-color:var(--amber)}
+
+/* ── Panels ── */
+.panel{display:none;flex:1;overflow-y:auto;flex-direction:column;min-height:0;overscroll-behavior:contain}
+.panel.active{display:flex}
+#panelForm{padding:14px;gap:11px}
+#panelJournal{padding:12px;gap:10px}
+#panelStats{padding:14px;gap:14px}
+
+/* ── Form ── */
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:0.75rem;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em}
+.field select,.field input[type=text],.field input[type=number],.field textarea{
+  width:100%;padding:12px 14px;
+  border:1.5px solid var(--border);border-radius:var(--radius);
+  font-size:1rem;background:#fff;font-family:inherit;
+  -webkit-appearance:none;appearance:none;color:#111;
+}
+.field select:focus,.field input:focus,.field textarea:focus{
+  outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(200,117,51,.12);
+}
+.field textarea{resize:vertical;min-height:72px}
+
+/* Shutter speed pill group */
+.pill-group{display:flex;flex-wrap:wrap;gap:6px}
+.pill{
+  padding:8px 12px;border-radius:20px;cursor:pointer;
+  font-size:0.88rem;font-weight:600;
+  border:1.5px solid var(--border);background:#fff;color:#333;
+  transition:all .12s;flex-shrink:0;
+}
+.pill.active{background:var(--amber);border-color:var(--amber);color:#fff}
+.pill:active{filter:brightness(.92)}
+
+/* Roll selector row */
+.roll-row{display:flex;gap:8px;align-items:flex-end}
+.roll-row .field{flex:1}
+#newRollBtn{
+  height:46px;padding:0 14px;border:1.5px solid var(--amber);
+  border-radius:var(--radius);background:#fff;color:var(--amber);
+  font-size:0.9rem;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;
+}
+#newRollBtn:active{background:var(--amber);color:#fff}
+
+/* Shot counter badge */
+#shotCounterBadge{
+  background:var(--dark2);color:#fff;border-radius:var(--radius);
+  padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+#shotNum{font-size:2.2rem;font-weight:700;color:var(--amber-l);line-height:1}
+#shotNum small{font-size:0.75rem;color:#aaa;display:block;font-weight:400}
+
+/* Env & lighting grid */
+.env-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.env-btn{
+  padding:10px 6px;border-radius:10px;border:1.5px solid var(--border);
+  background:#fff;cursor:pointer;font-size:0.88rem;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+}
+.env-btn .env-icon{font-size:1.3rem;line-height:1}
+.env-btn .env-lbl{font-size:0.72rem;font-weight:600;color:#555}
+.env-btn.active{border-color:var(--amber);background:#fff5ed}
+.env-btn.active .env-lbl{color:var(--amber)}
+
+/* Photo preview */
+#photosPreview{display:flex;flex-wrap:wrap;gap:8px}
+.photo-thumb{position:relative}
+.photo-thumb img{width:80px;height:80px;object-fit:cover;border-radius:10px;display:block}
+.photo-thumb .del-ph{
+  position:absolute;top:3px;right:3px;
+  background:rgba(0,0,0,.7);color:#fff;border:none;
+  border-radius:50%;width:22px;height:22px;
+  cursor:pointer;font-size:0.78rem;line-height:22px;text-align:center;padding:0;
+}
+.btn-photo{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  background:#fff;color:var(--amber);border:2px dashed var(--amber);
+  border-radius:var(--radius);padding:16px;font-size:1rem;
+  cursor:pointer;width:100%;font-weight:700;min-height:58px;
+}
+.btn-photo:active{background:#fff5ed}
+
+/* Save button */
+.btn-save{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--amber);color:#fff;border:none;
+  border-radius:var(--radius);padding:16px;font-size:1.05rem;
+  font-weight:700;cursor:pointer;width:100%;min-height:60px;
+  box-shadow:0 3px 10px rgba(200,117,51,.3);
+}
+.btn-save:active{filter:brightness(.9)}
+
+/* ── Journal ── */
+.roll-group-header{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 4px 2px;
+  font-size:0.78rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;color:#888;border-bottom:1px solid var(--border);
+}
+.roll-group-header span{flex:1}
+.roll-group-header .roll-count{
+  background:var(--border);color:#666;
+  padding:2px 7px;border-radius:10px;font-size:0.72rem;
+}
+.entry-card{
+  background:var(--card);border:1.5px solid var(--border);
+  border-radius:var(--radius);padding:12px;flex-shrink:0;
+}
+.entry-head{display:flex;gap:10px;align-items:flex-start}
+.entry-thumb img{width:72px;height:72px;object-fit:cover;border-radius:9px;display:block}
+.entry-info{flex:1;min-width:0}
+.entry-title{font-weight:700;font-size:0.98rem;color:#111}
+.entry-title small{color:#999;font-size:0.8rem;font-weight:400}
+.entry-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.chip{
+  display:inline-flex;align-items:center;gap:3px;
+  border-radius:6px;padding:3px 8px;font-size:0.78rem;font-weight:700;
+}
+.chip.amber{background:#fff3e0;color:#c87533}
+.chip.blue{background:#e3f2fd;color:#1565c0}
+.chip.green{background:#e8f5e9;color:#2e7d32}
+.chip.grey{background:#f5f5f5;color:#555}
+.entry-notes{font-size:0.82rem;color:#555;margin-top:5px;font-style:italic}
+.entry-meta{font-size:0.78rem;color:#aaa;margin-top:3px}
+.entry-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.btn-xs{
+  border-radius:8px;padding:8px 12px;cursor:pointer;
+  font-size:0.82rem;font-weight:600;border:1.5px solid var(--border);
+  background:#fff;color:#333;
+}
+.btn-xs.danger{color:var(--red);border-color:var(--red)}
+.btn-xs:active{filter:brightness(.9)}
+
+/* Journal controls */
+#journalControls{display:flex;gap:8px;align-items:center;padding:4px 0 8px;flex-shrink:0;flex-wrap:wrap}
+.jfilter{
+  padding:7px 12px;border-radius:20px;border:1.5px solid var(--border);
+  background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;color:#555;
+}
+.jfilter.active{background:var(--amber);border-color:var(--amber);color:#fff}
+.empty{text-align:center;color:#ccc;padding:48px 20px;font-size:0.95rem}
+
+#exportRow{
+  display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;
+  padding:10px 0 4px;border-top:1px solid var(--border);margin-top:4px;
+}
+.btn-out{
+  flex:1;padding:11px;border:1.5px solid var(--border);border-radius:10px;
+  background:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;text-align:center;
+}
+.btn-danger-sm{
+  flex:1;padding:11px;border:none;border-radius:10px;
+  background:var(--red);color:#fff;cursor:pointer;
+  font-size:0.85rem;font-weight:600;
+}
+
+/* ── Stats ── */
+.stat-card{
+  background:var(--card);border:1.5px solid var(--border);
+  border-radius:var(--radius);padding:14px;
+}
+.stat-card h3{font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#888;margin-bottom:10px}
+.stat-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0ede8;font-size:0.9rem}
+.stat-row:last-child{border-bottom:none}
+.stat-row span{color:#888;font-size:0.85rem}
+.stat-row strong{color:#111;font-weight:700}
+.stat-big{font-size:2.5rem;font-weight:700;color:var(--amber);text-align:center;padding:8px 0 4px}
+.stat-lbl{font-size:0.8rem;color:#aaa;text-align:center;margin-bottom:4px}
+.bar-wrap{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.bar-item{display:flex;align-items:center;gap:8px;font-size:0.82rem}
+.bar-item label{width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;color:#444}
+.bar-track{flex:1;height:8px;background:#f0ede8;border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;background:var(--amber);transition:width .3s}
+.bar-val{font-size:0.78rem;color:#888;min-width:24px;text-align:right}
+
+/* ── Edit modal ── */
+#editOverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:none}
+#editOverlay.open{display:block}
+#editSheet{
+  position:fixed;left:0;right:0;bottom:-100%;
+  max-height:92dvh;background:#fff;z-index:301;
+  border-radius:18px 18px 0 0;
+  display:flex;flex-direction:column;
+  transition:bottom .3s ease;
+  box-shadow:0 -4px 24px rgba(0,0,0,.18);
+}
+#editSheet.open{bottom:0}
+#editSheetHead{
+  background:var(--dark);color:#fff;padding:16px;
+  display:flex;align-items:center;gap:8px;
+  border-radius:18px 18px 0 0;flex-shrink:0;
+}
+#editSheetHead h2{font-size:1rem;flex:1}
+#editSheetClose{background:none;border:none;color:#fff;font-size:1.4rem;cursor:pointer;padding:4px;line-height:1}
+#editSheetBody{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.btn-save-edit{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--amber);color:#fff;border:none;
+  border-radius:var(--radius);padding:15px;font-size:1rem;
+  font-weight:700;cursor:pointer;width:100%;min-height:52px;flex-shrink:0;margin-top:4px;
+}
+.btn-save-edit:active{filter:brightness(.9)}
+
+/* ── New Roll modal ── */
+#newRollOverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-end}
+#newRollOverlay.open{display:flex}
+#newRollSheet{
+  background:#fff;border-radius:18px 18px 0 0;padding:20px;
+  width:100%;display:flex;flex-direction:column;gap:14px;
+  box-shadow:0 -4px 24px rgba(0,0,0,.18);
+}
+#newRollSheet h2{font-size:1.05rem;font-weight:700}
+.btn-create-roll{
+  background:var(--amber);color:#fff;border:none;
+  border-radius:var(--radius);padding:14px;font-size:1rem;font-weight:700;cursor:pointer;
+}
+.btn-cancel-roll{
+  background:#fff;color:#555;border:1.5px solid var(--border);
+  border-radius:var(--radius);padding:12px;font-size:0.95rem;font-weight:600;cursor:pointer;
+}
+
+/* ── Toast ── */
+#toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);
+  background:#222;color:#fff;padding:11px 18px;border-radius:var(--radius);
+  font-size:0.88rem;z-index:400;opacity:0;transition:transform .25s,opacity .25s;
+  max-width:90vw;text-align:center;pointer-events:none;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── Section separator ── */
+.section-title{font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#aaa;padding-top:2px}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <span class="logo">🎞</span>
+  <h1>Film Logger</h1>
+  <div id="headerCount">0 prises</div>
+  <button id="settingsBtn" title="Paramètres">⚙️</button>
+</div>
+
+<!-- Tabs -->
+<div id="tabs">
+  <button class="tab active" data-tab="panelForm">
+    <span class="tab-icon">📷</span><span class="tab-lbl">Prise</span>
+  </button>
+  <button class="tab" data-tab="panelJournal">
+    <span class="tab-icon">📋</span><span class="tab-lbl">Journal</span>
+  </button>
+  <button class="tab" data-tab="panelStats">
+    <span class="tab-icon">📊</span><span class="tab-lbl">Stats</span>
+  </button>
+</div>
+
+<!-- ══════════════════ PANEL FORM ══════════════════ -->
+<div id="panelForm" class="panel active">
+
+  <!-- Shot counter -->
+  <div id="shotCounterBadge">
+    <div>
+      <div id="shotNum">1<small>prochaine prise</small></div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="text-align:right">
+      <div style="font-size:0.78rem;color:#aaa">Rouleau</div>
+      <div id="activeRollDisplay" style="font-size:0.9rem;font-weight:700;color:#fff">—</div>
+    </div>
+  </div>
+
+  <!-- Roll selector -->
+  <div class="roll-row">
+    <div class="field">
+      <label>Rouleau / Session</label>
+      <select id="rollSelect">
+        <option value="">— Aucun rouleau —</option>
+      </select>
+    </div>
+    <button id="newRollBtn">+ Nouveau</button>
+  </div>
+
+  <!-- Camera -->
+  <div class="field">
+    <label>Appareil photo</label>
+    <select id="cameraSelect">
+      <option value="will_travel_4x5">Will Travel 4×5</option>
+      <option value="will_travel_5x7">Will Travel 5×7</option>
+      <option value="diy_8x18">DIY 8×18</option>
+      <option value="stereo_3d_world">Stéréo 3D World</option>
+      <option value="stereo_sputnik">Stéréo Spoutnik</option>
+      <option value="akm4">AKM4</option>
+      <option value="les_cordes">Les Cordes</option>
+    </select>
+  </div>
+
+  <!-- Film type -->
+  <div class="field">
+    <label>Type de film</label>
+    <select id="filmType">
+      <option>Kodak Portra 400</option>
+      <option>Kodak Portra 160</option>
+      <option>Kodak Gold 200</option>
+      <option>Kodak ColorPlus 200</option>
+      <option>Kodak Ektar 100</option>
+      <option>Fuji Superia 400</option>
+      <option>Fuji Pro 400H</option>
+      <option>Fuji Velvia 50</option>
+      <option>Fuji Provia 100F</option>
+      <option>Ilford HP5 400</option>
+      <option>Ilford Delta 400</option>
+      <option>Ilford FP4 125</option>
+      <option>Ilford XP2 400</option>
+      <option>Fomapan 100</option>
+      <option>Fomapan 400</option>
+      <option>Lomography 400</option>
+      <option>Papier RC</option>
+      <option>Papier FB</option>
+      <option>Autre / Inconnu</option>
+    </select>
+  </div>
+
+  <div class="section-title">Exposition</div>
+
+  <!-- Shutter speed -->
+  <div class="field">
+    <label>Vitesse d'obturation</label>
+    <div class="pill-group" id="shutterPills">
+      <button class="pill" data-v="B">B</button>
+      <button class="pill" data-v="T">T</button>
+      <button class="pill" data-v="30s">30s</button>
+      <button class="pill" data-v="15s">15s</button>
+      <button class="pill" data-v="8s">8s</button>
+      <button class="pill" data-v="4s">4s</button>
+      <button class="pill" data-v="2s">2s</button>
+      <button class="pill" data-v="1s">1s</button>
+      <button class="pill" data-v="1/2">1/2</button>
+      <button class="pill" data-v="1/4">1/4</button>
+      <button class="pill" data-v="1/8">1/8</button>
+      <button class="pill" data-v="1/15">1/15</button>
+      <button class="pill" data-v="1/30">1/30</button>
+      <button class="pill" data-v="1/60">1/60</button>
+      <button class="pill" data-v="1/125">1/125</button>
+      <button class="pill" data-v="1/250">1/250</button>
+      <button class="pill" data-v="1/500">1/500</button>
+      <button class="pill" data-v="manuel">Manuel</button>
+    </div>
+    <input type="text" id="shutterManuel" placeholder="ex: 2min, 45s, 1/400…" style="display:none;margin-top:6px">
+  </div>
+
+  <!-- Aperture -->
+  <div class="field">
+    <label>Ouverture (f-stop)</label>
+    <div class="pill-group" id="aperturePills">
+      <button class="pill" data-v="f/1.4">f/1.4</button>
+      <button class="pill" data-v="f/2">f/2</button>
+      <button class="pill" data-v="f/2.8">f/2.8</button>
+      <button class="pill" data-v="f/4">f/4</button>
+      <button class="pill" data-v="f/5.6">f/5.6</button>
+      <button class="pill" data-v="f/8">f/8</button>
+      <button class="pill" data-v="f/11">f/11</button>
+      <button class="pill" data-v="f/16">f/16</button>
+      <button class="pill" data-v="f/22">f/22</button>
+      <button class="pill" data-v="f/32">f/32</button>
+      <button class="pill" data-v="f/45">f/45</button>
+      <button class="pill" data-v="f/64">f/64</button>
+      <button class="pill" data-v="manuel">Manuel</button>
+    </div>
+    <input type="text" id="apertureManuel" placeholder="ex: f/3.5, f/100…" style="display:none;margin-top:6px">
+  </div>
+
+  <!-- Focus -->
+  <div class="field">
+    <label>Mise au point</label>
+    <input type="text" id="focusInput" placeholder="ex: 1.5m, infini, 50cm…">
+  </div>
+
+  <!-- Lighting environment -->
+  <div class="field">
+    <label>Environnement lumineux</label>
+    <div class="env-grid" id="envGrid">
+      <button class="env-btn" data-v="plein_soleil"><span class="env-icon">☀️</span><span class="env-lbl">Plein soleil</span></button>
+      <button class="env-btn" data-v="nuageux"><span class="env-icon">⛅</span><span class="env-lbl">Nuageux</span></button>
+      <button class="env-btn" data-v="couvert"><span class="env-icon">☁️</span><span class="env-lbl">Couvert</span></button>
+      <button class="env-btn" data-v="ombre"><span class="env-icon">🌥</span><span class="env-lbl">Ombre</span></button>
+      <button class="env-btn" data-v="interieur"><span class="env-icon">🏠</span><span class="env-lbl">Intérieur</span></button>
+      <button class="env-btn" data-v="nuit"><span class="env-icon">🌙</span><span class="env-lbl">Nuit</span></button>
+      <button class="env-btn" data-v="flash"><span class="env-icon">⚡</span><span class="env-lbl">Flash</span></button>
+      <button class="env-btn" data-v="studio"><span class="env-icon">🔆</span><span class="env-lbl">Studio</span></button>
+      <button class="env-btn" data-v="autre"><span class="env-icon">🎛</span><span class="env-lbl">Autre</span></button>
+    </div>
+  </div>
+
+  <!-- Optional photo -->
+  <button class="btn-photo" id="addPhotoBtn">📷 Ajouter une photo (optionnel)</button>
+  <input id="photoInput" type="file" accept="image/*" capture="environment" style="display:none" multiple>
+  <div id="photosPreview"></div>
+
+  <!-- Notes -->
+  <div class="field">
+    <label>Notes</label>
+    <textarea id="notesInput" placeholder="Sujet, lieu, conditions particulières, filtres, compenser l'expo…"></textarea>
+  </div>
+
+  <!-- Save -->
+  <button class="btn-save" id="saveBtn">💾 Enregistrer la prise</button>
+
+</div><!-- end panelForm -->
+
+<!-- ══════════════════ PANEL JOURNAL ══════════════════ -->
+<div id="panelJournal" class="panel">
+  <div id="journalControls">
+    <button class="jfilter active" data-filter="all" id="jfilterAll">Toutes</button>
+    <button class="jfilter" data-filter="roll" id="jfilterByRoll">Par rouleau</button>
+    <select id="rollFilterSelect" style="padding:7px 10px;border-radius:10px;border:1.5px solid var(--border);font-size:0.82rem;display:none">
+      <option value="">Tous les rouleaux</option>
+    </select>
+    <select id="cameraFilterSelect" style="padding:7px 10px;border-radius:10px;border:1.5px solid var(--border);font-size:0.82rem;margin-left:auto">
+      <option value="">Tous appareils</option>
+      <option value="will_travel_4x5">Will Travel 4×5</option>
+      <option value="will_travel_5x7">Will Travel 5×7</option>
+      <option value="diy_8x18">DIY 8×18</option>
+      <option value="stereo_3d_world">Stéréo 3D World</option>
+      <option value="stereo_sputnik">Stéréo Spoutnik</option>
+      <option value="akm4">AKM4</option>
+      <option value="les_cordes">Les Cordes</option>
+    </select>
+  </div>
+  <div id="list"></div>
+  <div id="exportRow">
+    <button class="btn-out" id="exportJson">⬇ JSON</button>
+    <button class="btn-out" id="exportCsv">⬇ CSV</button>
+    <button class="btn-danger-sm" id="clearAll">🗑 Tout effacer</button>
+  </div>
+</div>
+
+<!-- ══════════════════ PANEL STATS ══════════════════ -->
+<div id="panelStats" class="panel">
+  <div class="stat-card" id="statOverview">
+    <h3>Vue d'ensemble</h3>
+    <div id="statRows"></div>
+  </div>
+  <div class="stat-card" id="statCameras">
+    <h3>Par appareil</h3>
+    <div class="bar-wrap" id="cameraBarWrap"></div>
+  </div>
+  <div class="stat-card" id="statFilms">
+    <h3>Films utilisés</h3>
+    <div class="bar-wrap" id="filmBarWrap"></div>
+  </div>
+  <div class="stat-card" id="statEnvs">
+    <h3>Conditions lumineuses</h3>
+    <div class="bar-wrap" id="envBarWrap"></div>
+  </div>
+</div>
+
+<!-- ══════════════════ EDIT MODAL ══════════════════ -->
+<div id="editOverlay"></div>
+<div id="editSheet">
+  <div id="editSheetHead">
+    <h2>✏️ Modifier la prise</h2>
+    <button id="editSheetClose">✕</button>
+  </div>
+  <div id="editSheetBody">
+    <div class="field">
+      <label>Appareil photo</label>
+      <select id="editCameraSelect">
+        <option value="will_travel_4x5">Will Travel 4×5</option>
+        <option value="will_travel_5x7">Will Travel 5×7</option>
+        <option value="diy_8x18">DIY 8×18</option>
+        <option value="stereo_3d_world">Stéréo 3D World</option>
+        <option value="stereo_sputnik">Stéréo Spoutnik</option>
+        <option value="akm4">AKM4</option>
+        <option value="les_cordes">Les Cordes</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Type de film</label>
+      <select id="editFilmType">
+        <option>Kodak Portra 400</option><option>Kodak Portra 160</option>
+        <option>Kodak Gold 200</option><option>Kodak ColorPlus 200</option>
+        <option>Kodak Ektar 100</option><option>Fuji Superia 400</option>
+        <option>Fuji Pro 400H</option><option>Fuji Velvia 50</option>
+        <option>Fuji Provia 100F</option><option>Ilford HP5 400</option>
+        <option>Ilford Delta 400</option><option>Ilford FP4 125</option>
+        <option>Ilford XP2 400</option><option>Fomapan 100</option>
+        <option>Fomapan 400</option><option>Lomography 400</option>
+        <option>Papier RC</option><option>Papier FB</option>
+        <option>Autre / Inconnu</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Vitesse d'obturation</label>
+      <input type="text" id="editShutter" placeholder="ex: 1/125, 2s, B…">
+    </div>
+    <div class="field">
+      <label>Ouverture</label>
+      <input type="text" id="editAperture" placeholder="ex: f/8, f/11…">
+    </div>
+    <div class="field">
+      <label>Mise au point</label>
+      <input type="text" id="editFocus" placeholder="ex: 1.5m, infini…">
+    </div>
+    <div class="field">
+      <label>Notes</label>
+      <textarea id="editNotes" placeholder="Notes…"></textarea>
+    </div>
+    <button class="btn-save-edit" id="editSaveBtn">💾 Enregistrer les modifications</button>
+  </div>
+</div>
+
+<!-- ══════════════════ NEW ROLL MODAL ══════════════════ -->
+<div id="newRollOverlay">
+  <div id="newRollSheet">
+    <h2>📽 Nouveau rouleau / session</h2>
+    <div class="field">
+      <label>Nom du rouleau</label>
+      <input type="text" id="newRollName" placeholder="ex: Portra400 – Paris Mai 2026">
+    </div>
+    <button class="btn-create-roll" id="createRollBtn">Créer le rouleau</button>
+    <button class="btn-cancel-roll" id="cancelRollBtn">Annuler</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// CONFIG & STATE
+// ══════════════════════════════════════════════════════
+const IDB_KEY_SHOTS = 'film_logger_shots_v1'
+const IDB_KEY_ROLLS = 'film_logger_rolls_v1'
+const CAMERA_LABELS = {
+  will_travel_4x5:'Will Travel 4×5',
+  will_travel_5x7:'Will Travel 5×7',
+  diy_8x18:'DIY 8×18',
+  stereo_3d_world:'Stéréo 3D World',
+  stereo_sputnik:'Stéréo Spoutnik',
+  akm4:'AKM4',
+  les_cordes:'Les Cordes'
+}
+const ENV_LABELS = {
+  plein_soleil:'Plein soleil',nuageux:'Nuageux',couvert:'Couvert',
+  ombre:'Ombre',interieur:'Intérieur',nuit:'Nuit',flash:'Flash',studio:'Studio',autre:'Autre'
+}
+
+localforage.config({ name: 'film_logger' })
+
+let allShots  = []
+let allRolls  = []  // [{id, name, createdAt}]
+let pendingPhotos = []
+let editingId = null
+let currentFilter = 'all'
+let currentRollFilter = ''
+let currentCameraFilter = ''
+
+// pill selections
+let selectedShutter  = ''
+let selectedAperture = ''
+let selectedEnv      = ''
+
+// ── Toast ──────────────────────────────────────────────
+let _toastTimer = null
+function toast(msg, dur=2500){
+  const el = document.getElementById('toast')
+  el.textContent = msg; el.classList.add('show')
+  clearTimeout(_toastTimer)
+  _toastTimer = setTimeout(()=>el.classList.remove('show'), dur)
+}
+
+// ── Persistence ────────────────────────────────────────
+async function loadAll(){
+  allShots  = (await localforage.getItem(IDB_KEY_SHOTS))  || []
+  allRolls  = (await localforage.getItem(IDB_KEY_ROLLS))  || []
+}
+async function saveAll(){
+  await localforage.setItem(IDB_KEY_SHOTS, allShots)
+  await localforage.setItem(IDB_KEY_ROLLS, allRolls)
+}
+
+// ── Rolls ──────────────────────────────────────────────
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6) }
+
+function renderRollSelect(){
+  const sel = document.getElementById('rollSelect')
+  const cur = sel.value
+  sel.innerHTML = '<option value="">— Aucun rouleau —</option>'
+  allRolls.forEach(r=>{
+    const cnt = allShots.filter(s=>s.rollId===r.id).length
+    const opt = document.createElement('option')
+    opt.value = r.id
+    opt.textContent = `${r.name} (${cnt} prise${cnt>1?'s':''})`
+    sel.appendChild(opt)
+  })
+  if(cur) sel.value = cur
+  updateActiveRollDisplay()
+  renderRollFilterSelect()
+}
+
+function updateActiveRollDisplay(){
+  const sel = document.getElementById('rollSelect')
+  const roll = allRolls.find(r=>r.id===sel.value)
+  document.getElementById('activeRollDisplay').textContent = roll ? roll.name : '—'
+}
+
+function renderRollFilterSelect(){
+  const sel = document.getElementById('rollFilterSelect')
+  const cur = sel.value
+  sel.innerHTML = '<option value="">Tous les rouleaux</option>'
+  allRolls.forEach(r=>{
+    const opt = document.createElement('option')
+    opt.value = r.id
+    opt.textContent = r.name
+    sel.appendChild(opt)
+  })
+  if(cur) sel.value = cur
+}
+
+function nextShotNum(){
+  const rollId = document.getElementById('rollSelect').value
+  if(!rollId) return allShots.length + 1
+  return allShots.filter(s=>s.rollId===rollId).length + 1
+}
+
+function updateShotCounter(){
+  const n = nextShotNum()
+  document.getElementById('shotNum').innerHTML = `${n}<small>prochaine prise</small>`
+}
+
+// ── Pill logic ─────────────────────────────────────────
+function setupPills(containerId, onSelect){
+  document.getElementById(containerId).addEventListener('click', e=>{
+    const btn = e.target.closest('.pill')
+    if(!btn) return
+    document.querySelectorAll(`#${containerId} .pill`).forEach(p=>p.classList.remove('active'))
+    btn.classList.add('active')
+    onSelect(btn.dataset.v)
+  })
+}
+
+function setupEnvGrid(){
+  document.getElementById('envGrid').addEventListener('click', e=>{
+    const btn = e.target.closest('.env-btn')
+    if(!btn) return
+    document.querySelectorAll('#envGrid .env-btn').forEach(b=>b.classList.remove('active'))
+    btn.classList.add('active')
+    selectedEnv = btn.dataset.v
+  })
+}
+
+// ── Photos ─────────────────────────────────────────────
+function compressImage(file, maxW=1200, quality=0.82){
+  return new Promise(resolve=>{
+    const reader = new FileReader()
+    reader.onload = e=>{
+      const img = new Image()
+      img.onload = ()=>{
+        const canvas = document.createElement('canvas')
+        const ratio = Math.min(1, maxW / img.width)
+        canvas.width = img.width * ratio
+        canvas.height = img.height * ratio
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function renderPhotosPreview(containerId, photos, onDelete){
+  const wrap = document.getElementById(containerId)
+  wrap.innerHTML = ''
+  photos.forEach((src, i)=>{
+    const div = document.createElement('div')
+    div.className = 'photo-thumb'
+    div.innerHTML = `<img src="${src}"><button class="del-ph" data-i="${i}">✕</button>`
+    div.querySelector('.del-ph').addEventListener('click', ()=>onDelete(i))
+    wrap.appendChild(div)
+  })
+}
+
+// ── Save shot ──────────────────────────────────────────
+async function saveShot(){
+  const rollId = document.getElementById('rollSelect').value
+  const camera = document.getElementById('cameraSelect').value
+  const film   = document.getElementById('filmType').value
+  const notes  = document.getElementById('notesInput').value.trim()
+  const focus  = document.getElementById('focusInput').value.trim()
+
+  let shutter = selectedShutter === 'manuel'
+    ? document.getElementById('shutterManuel').value.trim()
+    : selectedShutter
+  let aperture = selectedAperture === 'manuel'
+    ? document.getElementById('apertureManuel').value.trim()
+    : selectedAperture
+
+  if(!camera){ toast('Choisis un appareil photo'); return }
+
+  const shot = {
+    id: uid(),
+    createdAt: Date.now(),
+    rollId,
+    shotNumber: nextShotNum(),
+    camera,
+    film,
+    shutter:  shutter  || '?',
+    aperture: aperture || '?',
+    focus:    focus    || '?',
+    env:      selectedEnv || '',
+    notes,
+    photos: [...pendingPhotos]
+  }
+  allShots.unshift(shot)
+  await saveAll()
+  resetForm()
+  renderAll()
+  toast(`📷 Prise #${shot.shotNumber} enregistrée !`)
+}
+
+function resetForm(){
+  pendingPhotos = []
+  selectedShutter  = ''
+  selectedAperture = ''
+  selectedEnv      = ''
+  document.querySelectorAll('#shutterPills .pill').forEach(p=>p.classList.remove('active'))
+  document.querySelectorAll('#aperturePills .pill').forEach(p=>p.classList.remove('active'))
+  document.querySelectorAll('#envGrid .env-btn').forEach(b=>b.classList.remove('active'))
+  document.getElementById('shutterManuel').style.display = 'none'
+  document.getElementById('apertureManuel').style.display = 'none'
+  document.getElementById('shutterManuel').value = ''
+  document.getElementById('apertureManuel').value = ''
+  document.getElementById('focusInput').value = ''
+  document.getElementById('notesInput').value = ''
+  document.getElementById('photosPreview').innerHTML = ''
+  updateShotCounter()
+}
+
+// ── Render Journal ─────────────────────────────────────
+function filteredShots(){
+  let shots = allShots.slice()
+  if(currentCameraFilter) shots = shots.filter(s=>s.camera===currentCameraFilter)
+  if(currentFilter==='roll' && currentRollFilter)
+    shots = shots.filter(s=>s.rollId===currentRollFilter)
+  return shots
+}
+
+function cameraLabel(v){ return CAMERA_LABELS[v] || v }
+function envLabel(v){ return ENV_LABELS[v] || v }
+
+function renderShot(shot){
+  const roll = allRolls.find(r=>r.id===shot.rollId)
+  const date = new Date(shot.createdAt)
+  const dateStr = date.toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'})
+  const timeStr = date.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})
+  const thumb = shot.photos && shot.photos[0]
+    ? `<div class="entry-thumb"><img src="${shot.photos[0]}"></div>` : ''
+
+  const envEmoji = {
+    plein_soleil:'☀️',nuageux:'⛅',couvert:'☁️',ombre:'🌥',
+    interieur:'🏠',nuit:'🌙',flash:'⚡',studio:'🔆',autre:'🎛'
+  }[shot.env] || ''
+
+  return `
+  <div class="entry-card" data-id="${shot.id}">
+    <div class="entry-head">
+      ${thumb}
+      <div class="entry-info">
+        <div class="entry-title">
+          Prise #${shot.shotNumber}
+          <small> · ${dateStr} ${timeStr}</small>
+        </div>
+        <div class="entry-chips">
+          <span class="chip amber">📷 ${cameraLabel(shot.camera)}</span>
+          ${roll ? `<span class="chip blue">🎞 ${roll.name}</span>` : ''}
+          ${shot.shutter && shot.shutter!=='?' ? `<span class="chip grey">⏱ ${shot.shutter}</span>` : ''}
+          ${shot.aperture && shot.aperture!=='?' ? `<span class="chip grey">${shot.aperture}</span>` : ''}
+          ${shot.focus && shot.focus!=='?' ? `<span class="chip grey">📐 ${shot.focus}</span>` : ''}
+          ${shot.env ? `<span class="chip green">${envEmoji} ${envLabel(shot.env)}</span>` : ''}
+        </div>
+        <div class="entry-meta">${shot.film}</div>
+        ${shot.notes ? `<div class="entry-notes">"${shot.notes}"</div>` : ''}
+      </div>
+    </div>
+    <div class="entry-actions">
+      <button class="btn-xs" data-action="edit" data-id="${shot.id}">✏️ Modifier</button>
+      <button class="btn-xs danger" data-action="delete" data-id="${shot.id}">🗑 Supprimer</button>
+    </div>
+  </div>`
+}
+
+function renderJournal(){
+  const shots = filteredShots()
+  const list  = document.getElementById('list')
+
+  if(!shots.length){
+    list.innerHTML = '<div class="empty">Aucune prise pour l\'instant.<br>Commence à logger !</div>'
+    return
+  }
+
+  if(currentFilter === 'roll' && currentRollFilter){
+    // grouped by single roll, just list
+    list.innerHTML = shots.map(renderShot).join('')
+  } else {
+    // group by roll
+    const groups = {}
+    const noRoll = []
+    shots.forEach(s=>{
+      if(s.rollId){
+        if(!groups[s.rollId]) groups[s.rollId]=[]
+        groups[s.rollId].push(s)
+      } else { noRoll.push(s) }
+    })
+    let html = ''
+    Object.entries(groups).forEach(([rid, shots])=>{
+      const roll = allRolls.find(r=>r.id===rid)
+      const name = roll ? roll.name : rid
+      html += `<div class="roll-group-header">
+        <span>🎞 ${name}</span>
+        <span class="roll-count">${shots.length} prise${shots.length>1?'s':''}</span>
+      </div>`
+      html += shots.map(renderShot).join('')
+    })
+    if(noRoll.length){
+      html += `<div class="roll-group-header"><span>📷 Sans rouleau</span><span class="roll-count">${noRoll.length}</span></div>`
+      html += noRoll.map(renderShot).join('')
+    }
+    list.innerHTML = html
+  }
+
+  // Event delegation for actions
+  list.querySelectorAll('[data-action]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id = btn.dataset.id
+      if(btn.dataset.action==='edit') openEdit(id)
+      if(btn.dataset.action==='delete') deleteShot(id)
+    })
+  })
+}
+
+// ── Stats ──────────────────────────────────────────────
+function countBy(arr, key){
+  const map = {}
+  arr.forEach(item=>{
+    const v = item[key] || 'inconnu'
+    map[v] = (map[v]||0)+1
+  })
+  return Object.entries(map).sort((a,b)=>b[1]-a[1])
+}
+
+function renderBars(containerId, entries, labelFn){
+  const wrap = document.getElementById(containerId)
+  if(!entries.length){ wrap.innerHTML='<div style="font-size:0.82rem;color:#ccc">Aucune donnée</div>'; return }
+  const max = entries[0][1]
+  wrap.innerHTML = entries.map(([k,v])=>`
+    <div class="bar-item">
+      <label>${labelFn ? labelFn(k) : k}</label>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round((v/max)*100)}%"></div></div>
+      <span class="bar-val">${v}</span>
+    </div>`).join('')
+}
+
+function renderStats(){
+  const shots = allShots
+  const rolls = allRolls
+  // overview
+  const cameras = [...new Set(shots.map(s=>s.camera))].length
+  const rolleaux = rolls.length
+  const total   = shots.length
+  document.getElementById('statRows').innerHTML = `
+    <div class="stat-row"><span>Total prises</span><strong>${total}</strong></div>
+    <div class="stat-row"><span>Rouleaux / sessions</span><strong>${rolleaux}</strong></div>
+    <div class="stat-row"><span>Appareils utilisés</span><strong>${cameras}</strong></div>
+  `
+  renderBars('cameraBarWrap', countBy(shots,'camera'), cameraLabel)
+  renderBars('filmBarWrap', countBy(shots,'film'), null)
+  renderBars('envBarWrap', countBy(shots,'env'), envLabel)
+}
+
+// ── Global render ──────────────────────────────────────
+function renderAll(){
+  renderRollSelect()
+  renderJournal()
+  renderStats()
+  updateShotCounter()
+  const total = allShots.length
+  document.getElementById('headerCount').textContent = `${total} prise${total>1?'s':''}`
+}
+
+// ── Edit ───────────────────────────────────────────────
+function openEdit(id){
+  const shot = allShots.find(s=>s.id===id)
+  if(!shot) return
+  editingId = id
+  document.getElementById('editCameraSelect').value = shot.camera
+  document.getElementById('editFilmType').value     = shot.film
+  document.getElementById('editShutter').value      = shot.shutter === '?' ? '' : shot.shutter
+  document.getElementById('editAperture').value     = shot.aperture === '?' ? '' : shot.aperture
+  document.getElementById('editFocus').value        = shot.focus === '?' ? '' : shot.focus
+  document.getElementById('editNotes').value        = shot.notes || ''
+  document.getElementById('editOverlay').classList.add('open')
+  document.getElementById('editSheet').classList.add('open')
+}
+function closeEdit(){
+  editingId = null
+  document.getElementById('editOverlay').classList.remove('open')
+  document.getElementById('editSheet').classList.remove('open')
+}
+async function saveEdit(){
+  const shot = allShots.find(s=>s.id===editingId)
+  if(!shot) return
+  shot.camera   = document.getElementById('editCameraSelect').value
+  shot.film     = document.getElementById('editFilmType').value
+  shot.shutter  = document.getElementById('editShutter').value.trim() || '?'
+  shot.aperture = document.getElementById('editAperture').value.trim() || '?'
+  shot.focus    = document.getElementById('editFocus').value.trim() || '?'
+  shot.notes    = document.getElementById('editNotes').value.trim()
+  shot.updatedAt = Date.now()
+  await saveAll()
+  closeEdit()
+  renderAll()
+  toast('✏️ Prise modifiée !')
+}
+
+// ── Delete ─────────────────────────────────────────────
+async function deleteShot(id){
+  if(!confirm('Supprimer cette prise ?')) return
+  allShots = allShots.filter(s=>s.id!==id)
+  await saveAll()
+  renderAll()
+  toast('🗑 Prise supprimée')
+}
+
+// ── Export ─────────────────────────────────────────────
+function exportJSON(){
+  const blob = new Blob([JSON.stringify({shots:allShots,rolls:allRolls},null,2)],{type:'application/json'})
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `film-logger-${new Date().toISOString().slice(0,10)}.json`
+  a.click()
+}
+function exportCSV(){
+  const cols = ['date','shotNumber','roll','camera','film','shutter','aperture','focus','env','notes']
+  const rows = [cols.join(';')]
+  allShots.forEach(s=>{
+    const roll = allRolls.find(r=>r.id===s.rollId)
+    rows.push([
+      new Date(s.createdAt).toISOString(),
+      s.shotNumber,
+      (roll ? roll.name : ''),
+      cameraLabel(s.camera),
+      s.film,
+      s.shutter,
+      s.aperture,
+      s.focus,
+      envLabel(s.env),
+      '"'+(s.notes||'').replace(/"/g,"'")+'"'
+    ].join(';'))
+  })
+  const blob = new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'})
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `film-logger-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+}
+
+// ══════════════════════════════════════════════════════
+// EVENT LISTENERS
+// ══════════════════════════════════════════════════════
+
+// Tabs
+document.getElementById('tabs').addEventListener('click', e=>{
+  const tab = e.target.closest('.tab')
+  if(!tab) return
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'))
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'))
+  tab.classList.add('active')
+  const panel = document.getElementById(tab.dataset.tab)
+  if(panel) panel.classList.add('active')
+  if(tab.dataset.tab==='panelStats') renderStats()
+})
+
+// Shutter pills
+setupPills('shutterPills', v=>{
+  selectedShutter = v
+  document.getElementById('shutterManuel').style.display = v==='manuel' ? 'block' : 'none'
+})
+
+// Aperture pills
+setupPills('aperturePills', v=>{
+  selectedAperture = v
+  document.getElementById('apertureManuel').style.display = v==='manuel' ? 'block' : 'none'
+})
+
+// Env grid
+setupEnvGrid()
+
+// Roll selector change
+document.getElementById('rollSelect').addEventListener('change', ()=>{
+  updateActiveRollDisplay()
+  updateShotCounter()
+})
+
+// New roll modal
+document.getElementById('newRollBtn').addEventListener('click', ()=>{
+  document.getElementById('newRollName').value = ''
+  document.getElementById('newRollOverlay').classList.add('open')
+  setTimeout(()=>document.getElementById('newRollName').focus(), 100)
+})
+document.getElementById('cancelRollBtn').addEventListener('click', ()=>{
+  document.getElementById('newRollOverlay').classList.remove('open')
+})
+document.getElementById('newRollOverlay').addEventListener('click', e=>{
+  if(e.target===document.getElementById('newRollOverlay'))
+    document.getElementById('newRollOverlay').classList.remove('open')
+})
+document.getElementById('createRollBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('newRollName').value.trim()
+  if(!name){ toast('Donne un nom au rouleau'); return }
+  const roll = { id: uid(), name, createdAt: Date.now() }
+  allRolls.push(roll)
+  await saveAll()
+  renderRollSelect()
+  document.getElementById('rollSelect').value = roll.id
+  updateActiveRollDisplay()
+  document.getElementById('newRollOverlay').classList.remove('open')
+  toast(`🎞 Rouleau "${name}" créé !`)
+})
+
+// Photos
+document.getElementById('addPhotoBtn').addEventListener('click', ()=>{
+  document.getElementById('photoInput').click()
+})
+document.getElementById('photoInput').addEventListener('change', async e=>{
+  const files = Array.from(e.target.files)
+  for(const f of files){
+    const compressed = await compressImage(f)
+    pendingPhotos.push(compressed)
+  }
+  renderPhotosPreview('photosPreview', pendingPhotos, i=>{
+    pendingPhotos.splice(i,1)
+    renderPhotosPreview('photosPreview', pendingPhotos, arguments.callee)
+  })
+  e.target.value = ''
+})
+
+// Save
+document.getElementById('saveBtn').addEventListener('click', saveShot)
+
+// Journal filters
+document.getElementById('jfilterAll').addEventListener('click', ()=>{
+  currentFilter = 'all'
+  document.querySelectorAll('.jfilter').forEach(b=>b.classList.remove('active'))
+  document.getElementById('jfilterAll').classList.add('active')
+  document.getElementById('rollFilterSelect').style.display = 'none'
+  renderJournal()
+})
+document.getElementById('jfilterByRoll').addEventListener('click', ()=>{
+  currentFilter = 'roll'
+  document.querySelectorAll('.jfilter').forEach(b=>b.classList.remove('active'))
+  document.getElementById('jfilterByRoll').classList.add('active')
+  document.getElementById('rollFilterSelect').style.display = 'block'
+  renderJournal()
+})
+document.getElementById('rollFilterSelect').addEventListener('change', e=>{
+  currentRollFilter = e.target.value
+  renderJournal()
+})
+document.getElementById('cameraFilterSelect').addEventListener('change', e=>{
+  currentCameraFilter = e.target.value
+  renderJournal()
+})
+
+// Export
+document.getElementById('exportJson').addEventListener('click', exportJSON)
+document.getElementById('exportCsv').addEventListener('click',  exportCSV)
+document.getElementById('clearAll').addEventListener('click', async ()=>{
+  if(!confirm('Effacer TOUTES les prises ? Cette action est irréversible.')) return
+  allShots = []; allRolls = []
+  await saveAll(); renderAll()
+  toast('🗑 Données effacées')
+})
+
+// Edit
+document.getElementById('editSheetClose').addEventListener('click', closeEdit)
+document.getElementById('editOverlay').addEventListener('click', closeEdit)
+document.getElementById('editSaveBtn').addEventListener('click', saveEdit)
+
+// Settings (placeholder)
+document.getElementById('settingsBtn').addEventListener('click', ()=>{
+  toast('⚙️ Paramètres — bientôt disponible')
+})
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+;(async ()=>{
+  await loadAll()
+  renderAll()
+})()
+</script>
+</body>
+</html>
