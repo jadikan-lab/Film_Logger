@@ -1190,6 +1190,23 @@ async function localLoad(){
 }
 async function localSave(arr){ await localforage.setItem(IDB_KEY, filterFilmLoggerEntries(arr)) }
 
+function entryModifiedAt(entry){
+  return Number((entry && (entry.updatedAt || entry.createdAt)) || 0)
+}
+
+function mergeFilmLoggerEntries(localEntries, driveEntries){
+  const byId = new Map()
+  for(const e of filterFilmLoggerEntries(driveEntries)){
+    if(e && e.id) byId.set(e.id, e)
+  }
+  for(const e of filterFilmLoggerEntries(localEntries)){
+    if(!e || !e.id) continue
+    const prev = byId.get(e.id)
+    if(!prev || entryModifiedAt(e) >= entryModifiedAt(prev)) byId.set(e.id, e)
+  }
+  return Array.from(byId.values()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))
+}
+
 // ── Helpers ───────────────────────────────────────────
 function sanitize(s){ return (s||'').toString().replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_\-.]/g,'') }
 function entryFilename(e, idx, isFinal=false){
@@ -1236,18 +1253,22 @@ async function driveWrite(entries){
 }
 async function syncFromDrive(){
   try{
+    const localEntries = filterFilmLoggerEntries(await localLoad())
     const preferredDriveFileId = await driveFindByName(DRIVE_FILENAME)
     if(preferredDriveFileId){
       driveFileId = preferredDriveFileId
-      allEntries = filterFilmLoggerEntries(await driveRead(driveFileId))
+      const driveEntries = filterFilmLoggerEntries(await driveRead(driveFileId))
+      allEntries = mergeSampleEntries(mergeFilmLoggerEntries(localEntries, driveEntries))
       await localSave(allEntries)
+      await driveWrite(allEntries)
       lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
     } else {
       let migratedFromLegacy = false
       for(const legacyName of LEGACY_DRIVE_FILENAMES){
         const legacyDriveFileId = await driveFindByName(legacyName)
         if(!legacyDriveFileId) continue
-        allEntries = filterFilmLoggerEntries(await driveRead(legacyDriveFileId))
+        const legacyEntries = filterFilmLoggerEntries(await driveRead(legacyDriveFileId))
+        allEntries = mergeSampleEntries(mergeFilmLoggerEntries(localEntries, legacyEntries))
         await localSave(allEntries)
         lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
         driveFileId = null
@@ -1255,9 +1276,10 @@ async function syncFromDrive(){
         migratedFromLegacy = true
         break
       }
-      if(!migratedFromLegacy && allEntries.length>0){
+      if(!migratedFromLegacy){
+        allEntries = mergeSampleEntries(localEntries)
         driveFileId = null
-        await driveWrite(allEntries)
+        if(allEntries.length>0) await driveWrite(allEntries)
       }
     }
   }catch(e){console.error('Drive sync:',e)}
@@ -1757,7 +1779,7 @@ async function openFinalUpload(id){
     const f=ev.target.files&&ev.target.files[0]; if(!f) return
     const d=await compressFile(f,1200,0.75)
     const i=allEntries.findIndex(x=>x.id===id)
-    if(i!==-1){allEntries[i].finalPhotoDataURL=d;await saveAndSync(allEntries);toast('Photo finale enregistrée ✓')}
+    if(i!==-1){allEntries[i].finalPhotoDataURL=d;allEntries[i].updatedAt=Date.now();await saveAndSync(allEntries);toast('Photo finale enregistrée ✓')}
   }; inp.click()
 }
 
@@ -1835,6 +1857,7 @@ document.getElementById('editSaveBtn').addEventListener('click',async()=>{
     allEntries[i].orientation = eo
     delete allEntries[i].orientationDeg
   }
+  allEntries[i].updatedAt = Date.now()
   // If photos changed, clear Drive links for this entry so they re-upload
   delete allEntries[i].myDrivePhotos
   closeEditModal()
@@ -1949,6 +1972,7 @@ document.getElementById('saveShotBtn').addEventListener('click', async()=>{
   allEntries[index].supportStatus = 'active'
   allEntries[index].shotsLog = (allEntries[index].shotsLog || []).concat(shot)
   if(totalFrames && nextFrame >= totalFrames) allEntries[index].supportStatus = 'finished'
+  allEntries[index].updatedAt = Date.now()
   await saveAndSync(allEntries)
   document.getElementById('shotShutter').value = ''
   const _br = document.getElementById('bulbRow'); if(_br) _br.style.display='none'
@@ -1967,6 +1991,7 @@ document.getElementById('moveToFridgeBtn').addEventListener('click', async()=>{
   if(index===-1) return
   allEntries[index].cameraName = document.getElementById('continueCameraSelect').value.trim()
   allEntries[index].supportStatus = (allEntries[index].supportStatus||'active')==='fridge' ? 'active' : 'fridge'
+  allEntries[index].updatedAt = Date.now()
   await saveAndSync(allEntries)
   toast((allEntries[index].supportStatus||'active')==='fridge' ? 'Pellicule mise au frigo' : 'Pellicule reactivee')
 })
@@ -1979,6 +2004,7 @@ document.getElementById('finishRollBtn').addEventListener('click', async()=>{
   allEntries[index].cameraName = document.getElementById('continueCameraSelect').value.trim()
   allEntries[index].supportStatus = 'finished'
   allEntries[index].finishedAt = Date.now()
+  allEntries[index].updatedAt = Date.now()
   await saveAndSync(allEntries)
   toast('Pellicule terminee')
 })
@@ -2004,8 +2030,9 @@ document.getElementById('saveBtn').addEventListener('click',async()=>{
   if(shotsTaken<0 || shotsTaken>frameCount){toast('Nombre de poses déjà prises invalide'); return}
 
   const id=Date.now().toString(36)+Math.random().toString(36).slice(2,8)
+  const now = Date.now()
   const entry={
-    id, createdAt:Date.now(), photos:[], location:null,
+    id, createdAt:now, updatedAt:now, photos:[], location:null,
     notes:document.getElementById('notes').value, finalPhotoDataURL:null,
     entryType:'roll', materialType:'film',
     supportStatus: supportLocation,
@@ -2046,11 +2073,12 @@ bindById('saveBtnSP', 'click', async()=>{
 
   const materialType = supportType==='paper' ? 'paper' : 'film'
   const id = Date.now().toString(36)+Math.random().toString(36).slice(2,8)
+  const now = Date.now()
   const entry = {
-    id, createdAt:Date.now(), photos:[], location:null,
+    id, createdAt:now, updatedAt:now, photos:[], location:null,
     notes:document.getElementById('spNotes').value, finalPhotoDataURL:null,
     entryType:supportType, materialType,
-    supportStatus:'finished', finishedAt:Date.now(),
+    supportStatus:'finished', finishedAt:now,
     stockName, filmFormat, cameraName, sheetCount, sheetsExposed, shotsLog:[]
   }
   if(expiryYear) entry.expiresYear = expiryYear
