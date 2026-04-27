@@ -383,6 +383,10 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
       <span class="d-label">Sync appData</span>
       <span id="driveInfo" class="d-status">—</span>
     </div>
+    <div class="d-row">
+      <span class="d-label">Corbeille</span>
+      <span id="trashInfo" class="d-status">0 entrée</span>
+    </div>
     <button id="checkDriveBtn" class="d-btn outline">🔍 Vérifier Drive caché</button>
 
     <hr style="border:none;border-top:1px solid #eee">
@@ -1511,6 +1515,13 @@ function updateDriveInfo(){
   el.textContent = v ? `${allEntries.length} entrées · ${new Date(Number(v)).toLocaleTimeString()}` : `${allEntries.length} entrées`
 }
 
+function updateTrashInfo(){
+  const el = document.getElementById('trashInfo')
+  if(!el) return
+  const count = allEntries.filter(e=>!!e.deletedAt).length
+  el.textContent = `${count} entrée${count>1?'s':''}`
+}
+
 // ── Drive My Drive (visible publish) ─────────────────
 async function driveFindFolder(name){
   const q = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents`)
@@ -2200,7 +2211,7 @@ function renderStorageBar(){
   const activeCount = allEntries.filter(e=>!e.deletedAt && e.entryType==='roll' && (e.supportStatus||'active')!=='finished').length
   document.getElementById('storageBar').textContent=`${activeCount} pellicule(s) entamee(s) · ~${(sz/1024).toFixed(1)} KB${gToken?' · ✓ Drive':''}`
 }
-function renderAll(){renderList();renderArchivePanel();renderStorageBar();updateDriveInfo()}
+function renderAll(){renderList();renderArchivePanel();renderStorageBar();updateDriveInfo();updateTrashInfo()}
 
 // ── Photos ────────────────────────────────────────────
 function renderPreviews(){}
