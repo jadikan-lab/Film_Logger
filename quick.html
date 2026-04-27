@@ -716,7 +716,8 @@ const DRIVE_SCOPE    = 'https://www.googleapis.com/auth/drive.appdata https://ww
 const DRIVE_FILENAME = 'film_logger_entries.json'
 const LEGACY_DRIVE_FILENAMES = ['solargraph_entries.json']
 const MYDRIVE_FOLDER_NAME = 'Film_Logger'
-const IDB_KEY        = 'solar_entries_v3'
+const IDB_KEY        = 'film_logger_entries_v1'
+const LEGACY_IDB_KEY = 'solar_entries_v3'
 const UPLOAD_CONCURRENCY = 3   // parallel uploads at a time
 
 const LS_CAMERAS_KEY = 'ref_cameras_v1'
@@ -811,7 +812,7 @@ const PAPER_FORMATS = [
   '8x10 in (20.3x25.4 cm)'
 ]
 
-localforage.config({ name: 'solargraph_trk' })
+localforage.config({ name: 'film_logger' })
 
 let gToken       = null
 let driveFileId  = null
@@ -823,6 +824,14 @@ let filmStocks = []
 let paperStocks = []
 let settingsFilmFilter = ''
 let settingsPaperFilter = ''
+
+function isFilmLoggerEntry(entry){
+  return !!entry && (entry.entryType === 'roll' || entry.entryType === 'sheet')
+}
+
+function filterFilmLoggerEntries(entries){
+  return Array.isArray(entries) ? entries.filter(isFilmLoggerEntry) : []
+}
 
 // ── Expiry years ──────────────────────────────────────
 const EXPIRY_YEARS = (()=>{
@@ -1164,13 +1173,22 @@ function toast(msg, duration=2500){
 // ── IndexedDB ─────────────────────────────────────────
 async function localLoad(){
   try{
-    const stored = (await localforage.getItem(IDB_KEY))||[]
-    return mergeSampleEntries(Array.isArray(stored) ? stored : [])
+    const stored = await localforage.getItem(IDB_KEY)
+    const filtered = filterFilmLoggerEntries(stored)
+    if(filtered.length || (Array.isArray(stored) && stored.length === 0)){
+      return mergeSampleEntries(filtered)
+    }
+
+    const legacyStore = localforage.createInstance({ name: 'solargraph_trk' })
+    const legacyStored = await legacyStore.getItem(LEGACY_IDB_KEY)
+    const migrated = filterFilmLoggerEntries(legacyStored)
+    if(migrated.length) await localforage.setItem(IDB_KEY, migrated)
+    return mergeSampleEntries(migrated)
   }catch{
     return mergeSampleEntries([])
   }
 }
-async function localSave(arr){ await localforage.setItem(IDB_KEY, arr) }
+async function localSave(arr){ await localforage.setItem(IDB_KEY, filterFilmLoggerEntries(arr)) }
 
 // ── Helpers ───────────────────────────────────────────
 function sanitize(s){ return (s||'').toString().replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_\-.]/g,'') }
@@ -1218,20 +1236,36 @@ async function driveWrite(entries){
 }
 async function syncFromDrive(){
   try{
-    driveFileId = await driveFind()
-    if(driveFileId){
-      allEntries = await driveRead(driveFileId)
+    const preferredDriveFileId = await driveFindByName(DRIVE_FILENAME)
+    if(preferredDriveFileId){
+      driveFileId = preferredDriveFileId
+      allEntries = filterFilmLoggerEntries(await driveRead(driveFileId))
       await localSave(allEntries)
       lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
-    } else if(allEntries.length>0){
-      await driveWrite(allEntries)
+    } else {
+      let migratedFromLegacy = false
+      for(const legacyName of LEGACY_DRIVE_FILENAMES){
+        const legacyDriveFileId = await driveFindByName(legacyName)
+        if(!legacyDriveFileId) continue
+        allEntries = filterFilmLoggerEntries(await driveRead(legacyDriveFileId))
+        await localSave(allEntries)
+        lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
+        driveFileId = null
+        if(allEntries.length>0) await driveWrite(allEntries)
+        migratedFromLegacy = true
+        break
+      }
+      if(!migratedFromLegacy && allEntries.length>0){
+        driveFileId = null
+        await driveWrite(allEntries)
+      }
     }
   }catch(e){console.error('Drive sync:',e)}
 }
 async function saveAndSync(arr){
-  allEntries = arr
-  await localSave(arr)
-  if(gToken){ try{await driveWrite(arr)}catch(e){console.error('driveWrite:',e)} }
+  allEntries = filterFilmLoggerEntries(arr)
+  await localSave(allEntries)
+  if(gToken){ try{await driveWrite(allEntries)}catch(e){console.error('driveWrite:',e)} }
   if(gToken && localStorage.getItem('autoPublish')==='1'){
     try{await publishEntriesToMyDrive(allEntries)}catch(e){console.error('auto-publish:',e)}
   }
