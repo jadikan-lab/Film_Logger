@@ -408,7 +408,10 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
   </div>
   <div class="field" id="cameraField">
     <label>Appareil</label>
-    <select id="cameraSelect"></select>
+    <div class="inline-row">
+      <select id="cameraSelect"></select>
+      <button id="addCameraBtnRoll" class="btn-mini" type="button" title="Ajouter un appareil">+</button>
+    </div>
   </div>
   <div class="field">
     <label>Année de péremption (optionnel)</label>
@@ -462,7 +465,10 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
   </div>
   <div class="field" id="spCameraField">
     <label>Appareil</label>
-    <select id="spCamera"></select>
+    <div class="inline-row">
+      <select id="spCamera"></select>
+      <button id="addCameraBtnSP" class="btn-mini" type="button" title="Ajouter un appareil">+</button>
+    </div>
   </div>
   <div class="field">
     <label>Année de péremption (optionnel)</label>
@@ -516,7 +522,10 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
     <div class="entry-card">
       <div class="field">
         <label>Boîtier actuellement utilisé</label>
-        <select id="continueCameraSelect"></select>
+        <div class="inline-row">
+          <select id="continueCameraSelect"></select>
+          <button id="addCameraBtnContinue" class="btn-mini" type="button" title="Ajouter un appareil">+</button>
+        </div>
       </div>
       <div class="stop-seg-row" style="margin-top:10px">
         <span class="stop-seg-label">Stops</span>
@@ -563,6 +572,7 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
   </div>
   <div id="exportRow">
     <button class="btn-out" id="exportJson">⬇ JSON</button>
+    <button class="btn-out" id="exportCsv">⬇ CSV</button>
     <button class="btn-danger-sm" id="clearAll">🗑 Tout effacer</button>
   </div>
 </div>
@@ -607,12 +617,16 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
   <div class="settings-section">
     <div class="settings-section-head">🎯 Que pratiques-tu ?</div>
     <ul class="settings-list" id="practicesList">
-      <li><label><input type="checkbox" id="prac_roll_35" /> Pellicule 135 (35mm)</label></li>
-      <li><label><input type="checkbox" id="prac_roll_120" /> Pellicule 120</label></li>
-      <li><label><input type="checkbox" id="prac_sheet_4x5" /> Plan-film 4×5</label></li>
-      <li><label><input type="checkbox" id="prac_sheet_5x7" /> Plan-film 5×7</label></li>
-      <li><label><input type="checkbox" id="prac_sheet_8x10" /> Plan-film 8×10</label></li>
-      <li><label><input type="checkbox" id="prac_paper" /> Papier photo</label></li>
+      <li><strong>Pellicule</strong></li>
+      <li><label><input type="checkbox" id="prac_roll_35" /> 24x36 (35mm)</label></li>
+      <li><label><input type="checkbox" id="prac_roll_120" /> 120</label></li>
+      <li><strong>Plan-film</strong></li>
+      <li><label><input type="checkbox" id="prac_sheet_4x5" /> 4x5</label></li>
+      <li><label><input type="checkbox" id="prac_sheet_5x7" /> 5x7</label></li>
+      <li><label><input type="checkbox" id="prac_sheet_8x10" /> 8x10</label></li>
+      <li><strong>Papier</strong></li>
+      <li><label><input type="checkbox" id="prac_paper" /> Activer le papier photo</label></li>
+      <li><span style="font-size:0.82rem;color:#666">Types de papier gérés dans le catalogue ci-dessous.</span></li>
     </ul>
   </div>
 
@@ -1399,6 +1413,61 @@ async function uploadJSONToFolder(obj,filename,folderId){
   return r.json()
 }
 
+async function uploadTextToFolder(text, filename, mimeType, folderId){
+  const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents`)
+  const r0 = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d0 = await r0.json()
+  if(d0.files&&d0.files[0]){
+    const id=d0.files[0].id
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,{
+      method:'PATCH',headers:{Authorization:`Bearer ${gToken}`,'Content-Type':mimeType},body:text})
+    return {id}
+  }
+  const fd = new FormData()
+  fd.append('metadata',new Blob([JSON.stringify({name:filename,parents:[folderId]})],{type:'application/json'}))
+  fd.append('file',new Blob([text],{type:mimeType}),filename)
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+    method:'POST',headers:{Authorization:`Bearer ${gToken}`},body:fd})
+  return r.json()
+}
+
+function toCsvCell(value){
+  const raw = value == null ? '' : String(value)
+  const escaped = raw.replace(/"/g, '""')
+  return `"${escaped}"`
+}
+
+function entriesToCsv(entries){
+  const headers = [
+    'id','createdAt','updatedAt','entryType','materialType','supportStatus','stockName','filmFormat','cameraName',
+    'frameCount','shotsTaken','sheetCount','sheetsExposed','ratedIso','expiresYear','finishedAt','notes'
+  ]
+  const lines = [headers.join(',')]
+  for(const e of (entries||[])){
+    const row = [
+      e.id,
+      e.createdAt ? new Date(e.createdAt).toISOString() : '',
+      e.updatedAt ? new Date(e.updatedAt).toISOString() : '',
+      e.entryType || '',
+      e.materialType || '',
+      e.supportStatus || '',
+      e.stockName || '',
+      e.filmFormat || '',
+      e.cameraName || '',
+      e.frameCount ?? '',
+      e.shotsTaken ?? '',
+      e.sheetCount ?? '',
+      e.sheetsExposed ?? '',
+      e.ratedIso ?? '',
+      e.expiresYear || '',
+      e.finishedAt ? new Date(e.finishedAt).toISOString() : '',
+      e.notes || ''
+    ]
+    lines.push(row.map(toCsvCell).join(','))
+  }
+  return lines.join('\n')
+}
+
 // ── Parallel publish ──────────────────────────────────
 async function publishEntriesToMyDrive(entries){
   if(!gToken) throw new Error('Not authenticated')
@@ -1456,6 +1525,7 @@ async function publishEntriesToMyDrive(entries){
   if(total===0 && statusEl) statusEl.textContent = 'Aucune nouvelle photo à publier'
 
   await uploadJSONToFolder(entries,DRIVE_FILENAME,folderId)
+  await uploadTextToFolder(entriesToCsv(entries), 'film_logger_entries.csv', 'text/csv', folderId)
   if(statusEl) statusEl.textContent = total>0 ? `✓ ${total} photos publiées` : '✓ Métadonnées mises à jour'
   if(progEl) progEl.value = 100
 
@@ -1896,14 +1966,23 @@ bindById('saveArchiveFolderNameBtn', 'click', ()=>{
   toast('Nom du dossier enregistre')
 })
 
-bindById('addCameraBtn', 'click', ()=>{
-  const name = (prompt('Nom du nouvel appareil ?')||'').trim()
-  if(!name) return
+function addCameraOption(prefill){
+  const name = (prefill || prompt('Nom du nouvel appareil ?') || '').trim()
+  if(!name) return false
   cameraOptions = uniqueSorted(cameraOptions.concat(name))
   saveRefList(LS_CAMERAS_KEY, cameraOptions)
   renderCameraSelect(name)
-  toast('Appareil ajoute')
-})
+  renderSpCameraSelect()
+  const continueSel = document.getElementById('continueCameraSelect')
+  if(continueSel) fillSelectOptions(continueSel, cameraOptions, name)
+  renderSettingsPanel()
+  toast('Appareil ajouté')
+  return true
+}
+
+bindById('addCameraBtnRoll', 'click', ()=>{ addCameraOption() })
+bindById('addCameraBtnSP', 'click', ()=>{ addCameraOption() })
+bindById('addCameraBtnContinue', 'click', ()=>{ addCameraOption() })
 
 bindById('addStockBtn', 'click', ()=>{
   const name = (prompt('Nom du nouveau stock ?')||'').trim()
@@ -2102,6 +2181,14 @@ document.getElementById('exportJson').addEventListener('click',()=>{
   const b=new Blob([JSON.stringify(allEntries,null,2)],{type:'application/json'})
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='solar_entries.json';a.click()
 })
+document.getElementById('exportCsv').addEventListener('click',()=>{
+  const csv = entriesToCsv(allEntries)
+  const b = new Blob([csv], {type:'text/csv;charset=utf-8'})
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(b)
+  a.download = 'film_logger_entries.csv'
+  a.click()
+})
 document.getElementById('clearAll').addEventListener('click',async()=>{
   if(!confirm('Supprimer TOUS les supports ?'))return; await saveAndSync([])
 })
@@ -2234,7 +2321,11 @@ bindById('spAddStockBtn', 'click', ()=>{
 })
 
 bindById('settingsCameraAdd', 'click', ()=>{
-  settingsAddItem('settingsCameraInput', ()=>cameraOptions, v=>{ cameraOptions=v }, LS_CAMERAS_KEY, renderCameraSelect)
+  const input = document.getElementById('settingsCameraInput')
+  if(!input) return
+  const value = (input.value||'').trim()
+  if(!value){ input.focus(); return }
+  if(addCameraOption(value)){ input.value=''; input.focus() }
 })
 bindById('settingsCameraInput', 'keydown', e=>{ if(e.key==='Enter') document.getElementById('settingsCameraAdd')?.click() })
 
