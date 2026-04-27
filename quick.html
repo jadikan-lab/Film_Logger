@@ -227,6 +227,7 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
 .status-badge{font-size:0.82rem;margin-top:4px;font-weight:700}
 .status-badge.fridge{color:var(--blue)}
 .status-badge.finished{color:var(--green)}
+.status-badge.trash{color:var(--red)}
 .entry-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .btn-xs{
   border-radius:8px;padding:9px 12px;cursor:pointer;
@@ -235,6 +236,8 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
 }
 .btn-xs.danger{color:var(--red);border-color:var(--red)}
 .btn-xs:active{filter:brightness(.9)}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 2px}
+.filter-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 #storageBar{font-size:0.75rem;color:#999;text-align:center;flex-shrink:0;padding:4px 0}
 #exportRow{
   display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;
@@ -394,6 +397,7 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
     <button id="publishBtn" class="d-btn success">📤 Publier sur Mon Drive</button>
     <progress id="pubProgress" value="0" max="100"></progress>
     <div id="pubStatus"></div>
+    <button id="cleanupDriveBtn" class="d-btn outline">🧹 Nettoyer les orphelins Drive</button>
     <button id="resetDriveLinks" class="d-btn outline">🔄 Réinitialiser liens Drive</button>
   </div>
 </div>
@@ -585,6 +589,8 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
         <button id="saveShotBtn" class="btn-xs">Enregistrer cette vue</button>
         <button id="moveToFridgeBtn" class="btn-xs">Mettre au frigo</button>
         <button id="finishRollBtn" class="btn-xs">Terminer la pellicule</button>
+        <button id="continueDeleteBtn" class="btn-xs danger">Corbeille</button>
+        <button id="continueDeleteEverywhereBtn" class="btn-xs danger">Suppr partout</button>
       </div>
     </div>
     <div>
@@ -604,6 +610,10 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
   <div style="padding:8px 0 6px">
     <div style="font-size:0.92rem;font-weight:700;color:#333">Archives par jour</div>
     <div style="font-size:0.82rem;color:#666;margin-top:4px">Pellicules, plan-films et papiers termines sont ranges dans des dossiers par date. Tu peux renommer chaque dossier.</div>
+  </div>
+  <div class="filter-row">
+    <button class="btn-out filter-btn active" id="archiveViewArchive" type="button">Archives</button>
+    <button class="btn-out filter-btn" id="archiveViewTrash" type="button">Corbeille</button>
   </div>
   <div class="field">
     <label>Dossier (jour)</label>
@@ -798,6 +808,8 @@ const LS_PAPER_STOCKS_KEY = 'ref_paper_stocks_v1'
 const LS_ARCHIVE_FOLDERS_KEY = 'archive_folder_names_v1'
 const LS_PRACTICES_KEY = 'user_practices_v1'
 const PRACTICE_KEYS = ['roll_35','roll_120','sheet_4x5','sheet_5x7','sheet_8x10','paper']
+const TRASH_RETENTION_DAYS = 14
+const DELETE_QUEUE_KEY = 'film_logger_delete_queue_v1'
 
 const CATALOG_FILM_STOCKS = [
   'Ilford HP5+ 400',
@@ -960,6 +972,7 @@ let currentSort = 'date_desc'
 let selectedContinueId = null
 let selectedArchiveFolder = null
 let archiveFolderNames = {}
+let archiveView = 'archive'
 // practices + SP sub-type state
 let userPractices = {}
 let spSubType = 'sheet' // 'sheet' | 'paper'
@@ -1314,6 +1327,33 @@ async function localLoad(){
 }
 async function localSave(arr){ await localforage.setItem(IDB_KEY, filterFilmLoggerEntries(arr)) }
 
+function loadDeleteQueue(){
+  try{ return JSON.parse(localStorage.getItem(DELETE_QUEUE_KEY)||'[]')||[] }catch{return []}
+}
+function saveDeleteQueue(queue){
+  try{ localStorage.setItem(DELETE_QUEUE_KEY, JSON.stringify(queue||[])) }catch(e){}
+}
+function enqueueDeleteJob(entry){
+  const fileIds = []
+  for(const photo of (entry.myDrivePhotos||[])) if(photo && photo.fileId) fileIds.push(photo.fileId)
+  if(entry.myDriveFinal && entry.myDriveFinal.fileId) fileIds.push(entry.myDriveFinal.fileId)
+  const queue = loadDeleteQueue()
+  queue.push({ entryId: entry.id, fileIds: Array.from(new Set(fileIds)), createdAt: Date.now() })
+  saveDeleteQueue(queue)
+}
+function cancelDeleteJobs(entryId){
+  saveDeleteQueue(loadDeleteQueue().filter(job=>job.entryId!==entryId))
+}
+function purgeExpiredTrashEntries(entries){
+  const maxAge = TRASH_RETENTION_DAYS * 86400000
+  const now = Date.now()
+  return (entries||[]).filter(entry=>{
+    const expired = entry.deletedAt && (now - Number(entry.deletedAt) > maxAge)
+    if(expired) enqueueDeleteJob(entry)
+    return !expired
+  })
+}
+
 function entryModifiedAt(entry){
   return Number((entry && (entry.updatedAt || entry.createdAt)) || 0)
 }
@@ -1382,7 +1422,7 @@ async function syncFromDrive(){
     if(preferredDriveFileId){
       driveFileId = preferredDriveFileId
       const driveEntries = filterFilmLoggerEntries(await driveRead(driveFileId))
-      allEntries = mergeSampleEntries(mergeFilmLoggerEntries(localEntries, driveEntries))
+      allEntries = purgeExpiredTrashEntries(mergeSampleEntries(mergeFilmLoggerEntries(localEntries, driveEntries)))
       await localSave(allEntries)
       await driveWrite(allEntries)
       lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
@@ -1392,7 +1432,7 @@ async function syncFromDrive(){
         const legacyDriveFileId = await driveFindByName(legacyName)
         if(!legacyDriveFileId) continue
         const legacyEntries = filterFilmLoggerEntries(await driveRead(legacyDriveFileId))
-        allEntries = mergeSampleEntries(mergeFilmLoggerEntries(localEntries, legacyEntries))
+        allEntries = purgeExpiredTrashEntries(mergeSampleEntries(mergeFilmLoggerEntries(localEntries, legacyEntries)))
         await localSave(allEntries)
         lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
         driveFileId = null
@@ -1401,7 +1441,7 @@ async function syncFromDrive(){
         break
       }
       if(!migratedFromLegacy){
-        allEntries = mergeSampleEntries(localEntries)
+        allEntries = purgeExpiredTrashEntries(mergeSampleEntries(localEntries))
         driveFileId = null
         if(allEntries.length>0) await driveWrite(allEntries)
       }
@@ -1409,11 +1449,12 @@ async function syncFromDrive(){
   }catch(e){console.error('Drive sync:',e)}
 }
 async function saveAndSync(arr){
-  allEntries = filterFilmLoggerEntries(arr)
+  allEntries = purgeExpiredTrashEntries(filterFilmLoggerEntries(arr))
   await localSave(allEntries)
   if(gToken){ try{await driveWrite(allEntries)}catch(e){console.error('driveWrite:',e)} }
+  if(gToken){ try{await processDeleteQueue()}catch(e){console.error('deleteQueue:',e)} }
   if(gToken && localStorage.getItem('autoPublish')==='1'){
-    try{await publishEntriesToMyDrive(allEntries)}catch(e){console.error('auto-publish:',e)}
+    try{await publishEntriesToMyDrive(allEntries.filter(e=>!e.deletedAt))}catch(e){console.error('auto-publish:',e)}
   }
   renderAll()
 }
@@ -1437,7 +1478,9 @@ function initGoogleAuth(){
       gToken = resp.access_token
       updateAuthUI(true)
       try{localStorage.setItem('gsi_granted','1')}catch(e){}
-      await syncFromDrive(); renderAll()
+      await syncFromDrive()
+      await processDeleteQueue()
+      renderAll()
     }
   })
 }
@@ -1488,6 +1531,37 @@ async function driveFindFileInFolder(folderId,filename){
   const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents`)
   const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}`,{headers:{Authorization:`Bearer ${gToken}`}})
   const d = await r.json(); return d.files&&d.files[0]?d.files[0].id:null
+}
+async function driveDeleteFile(fileId){
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`,{
+    method:'DELETE', headers:{Authorization:`Bearer ${gToken}`}
+  })
+  if(!r.ok && r.status!==404) throw new Error('delete_failed_'+r.status)
+}
+async function driveListChildren(folderId){
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`)
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d = await r.json()
+  return d.files || []
+}
+async function processDeleteQueue(){
+  if(!gToken) return {processed:0, failed:0}
+  const queue = loadDeleteQueue()
+  if(!queue.length) return {processed:0, failed:0}
+  const keep = []
+  let processed = 0
+  let failed = 0
+  for(const job of queue){
+    try{
+      for(const fid of (job.fileIds||[])) await driveDeleteFile(fid)
+      processed++
+    }catch(e){
+      failed++
+      keep.push(job)
+    }
+  }
+  saveDeleteQueue(keep)
+  return {processed, failed}
 }
 async function uploadDataURLToFolder(dataURL,filename,folderId){
   const binStr = atob(dataURL.split(',')[1])
@@ -1742,9 +1816,33 @@ document.getElementById('publishBtn').addEventListener('click',async()=>{
   document.getElementById('pubStatus').textContent = 'Démarrage…'
   document.getElementById('pubProgress').style.display='block'
   try{
-    const r = await publishEntriesToMyDrive(allEntries)
+    await processDeleteQueue()
+    const r = await publishEntriesToMyDrive(allEntries.filter(e=>!e.deletedAt))
     toast(`✓ Publié : ${r.total} photo(s) sur Mon Drive`)
   }catch(e){toast('Erreur: '+(e.message||e)); console.error(e)}
+})
+document.getElementById('cleanupDriveBtn').addEventListener('click',async()=>{
+  if(!gToken){toast('Connecte-toi d\u2019abord à Google.'); return}
+  if(!confirm('Supprimer les fichiers orphelins dans Film_Logger ?')) return
+  try{
+    const folderId = await driveFindFolder(MYDRIVE_FOLDER_NAME)
+    if(!folderId){toast('Dossier Film_Logger introuvable'); return}
+    const children = await driveListChildren(folderId)
+    const keepFiles = new Set()
+    for(const entry of allEntries.filter(e=>!e.deletedAt)){
+      for(const photo of (entry.myDrivePhotos||[])) if(photo && photo.fileId) keepFiles.add(photo.fileId)
+      if(entry.myDriveFinal && entry.myDriveFinal.fileId) keepFiles.add(entry.myDriveFinal.fileId)
+    }
+    let removed = 0
+    for(const child of children){
+      if(child.name===DRIVE_FILENAME || child.name==='film_logger_entries.csv' || child.name===DRIVE_SHEET_FILENAME) continue
+      if(!keepFiles.has(child.id)){
+        await driveDeleteFile(child.id)
+        removed++
+      }
+    }
+    toast(`Nettoyage terminé: ${removed} élément(s) supprimé(s)`)
+  }catch(e){toast('Erreur nettoyage: '+(e.message||e)); console.error(e)}
 })
 document.getElementById('checkDriveBtn').addEventListener('click',async()=>{
   if(!gToken){toast('Connecte-toi d\u2019abord.'); return}
@@ -1903,11 +2001,17 @@ function renderContinueShots(entry){
 }
 
 function getArchiveEntries(entries){
-  return (entries||[]).filter(e=>(e.supportStatus||'active')==='finished')
+  return (entries||[]).filter(e=>!e.deletedAt && (e.supportStatus||'active')==='finished')
+}
+
+function getTrashEntries(entries){
+  return (entries||[]).filter(e=>!!e.deletedAt)
 }
 
 function getArchiveFolderKey(entry){
-  const ts = entry.finishedAt || entry.createdAt || Date.now()
+  const ts = archiveView==='trash'
+    ? (entry.deletedAt || entry.finishedAt || entry.createdAt || Date.now())
+    : (entry.finishedAt || entry.createdAt || Date.now())
   const d = new Date(ts)
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
@@ -1938,8 +2042,14 @@ function archiveEntryTypeLabel(entry){
   return 'Support'
 }
 
+function trashDaysRemaining(entry){
+  if(!entry.deletedAt) return null
+  const ms = TRASH_RETENTION_DAYS * 86400000 - (Date.now() - Number(entry.deletedAt))
+  return Math.max(0, Math.ceil(ms / 86400000))
+}
+
 function renderArchivePanel(){
-  const entries = getArchiveEntries(allEntries)
+  const entries = archiveView==='trash' ? getTrashEntries(allEntries) : getArchiveEntries(allEntries)
   const grouped = new Map()
   entries.forEach(e=>{
     const key = getArchiveFolderKey(e)
@@ -1968,7 +2078,7 @@ function renderArchivePanel(){
   else selectedArchiveFolder = folders[0] || null
 
   if(!selectedArchiveFolder){
-    empty.textContent = 'Aucune archive terminee pour le moment'
+    empty.textContent = archiveView==='trash' ? 'Aucune entrée dans la corbeille' : 'Aucune archive terminee pour le moment'
     empty.style.display = 'block'
     workspace.style.display = 'none'
     return
@@ -1978,21 +2088,66 @@ function renderArchivePanel(){
   empty.style.display = 'none'
   workspace.style.display = 'flex'
 
-  const dayEntries = (grouped.get(selectedArchiveFolder)||[]).slice().sort((a,b)=>(b.finishedAt||b.createdAt||0)-(a.finishedAt||a.createdAt||0))
+  const dayEntries = (grouped.get(selectedArchiveFolder)||[]).slice().sort((a,b)=>{
+    const ta = archiveView==='trash' ? (a.deletedAt||a.finishedAt||a.createdAt||0) : (a.finishedAt||a.createdAt||0)
+    const tb = archiveView==='trash' ? (b.deletedAt||b.finishedAt||b.createdAt||0) : (b.finishedAt||b.createdAt||0)
+    return tb - ta
+  })
   renameInput.value = archiveFolderNames[selectedArchiveFolder] || ''
-  summary.innerHTML = `<div class="entry-date">${archiveFolderLabel(selectedArchiveFolder)}</div><div class="entry-meta">${dayEntries.length} element(s) termine(s)</div>`
+  summary.innerHTML = `<div class="entry-date">${archiveView==='trash' ? 'Corbeille' : archiveFolderLabel(selectedArchiveFolder)}</div><div class="entry-meta">${dayEntries.length} élément(s) ${archiveView==='trash' ? 'supprimé(s)' : 'terminé(s)'}</div>`
 
-  list.innerHTML = dayEntries.map(e=>{
-    const doneTs = e.finishedAt || e.createdAt || Date.now()
+  list.innerHTML = ''
+  dayEntries.forEach(e=>{
+    const doneTs = archiveView==='trash' ? (e.deletedAt || e.finishedAt || e.createdAt || Date.now()) : (e.finishedAt || e.createdAt || Date.now())
     const doneLabel = new Date(doneTs).toLocaleString('fr-FR')
     const progress = e.entryType==='roll' ? `${e.shotsTaken||0}/${e.frameCount||0}` : `${e.sheetsExposed||0}/${e.sheetCount||0}`
-    return `<div class="shot-log"><div class="shot-log-head"><span>${archiveEntryTypeLabel(e)} · ${e.stockName||''}</span><span>${doneLabel}</span></div><div class="shot-log-meta">${e.filmFormat||''} · ${progress}${e.cameraName?` · ${e.cameraName}`:''}</div>${e.notes?`<div class="shot-log-notes">${e.notes}</div>`:''}</div>`
-  }).join('')
+    const card = document.createElement('div')
+    card.className = 'shot-log'
+    card.innerHTML = `<div class="shot-log-head"><span>${archiveEntryTypeLabel(e)} · ${e.stockName||''}</span><span>${doneLabel}</span></div><div class="shot-log-meta">${e.filmFormat||''} · ${progress}${e.cameraName?` · ${e.cameraName}`:''}</div>${archiveView==='trash' ? `<div class="status-badge trash">Suppression définitive dans ${trashDaysRemaining(e)} j</div>` : ''}${e.notes?`<div class="shot-log-notes">${e.notes}</div>`:''}<div class="entry-actions"></div>`
+    const actions = card.querySelector('.entry-actions')
+    const mk = (label, fn, danger)=>{ const b=document.createElement('button'); b.className='btn-xs'+(danger?' danger':''); b.textContent=label; b.onclick=fn; return b }
+    if(archiveView==='trash'){
+      actions.appendChild(mk('♻ Restaurer', async()=>{
+        const i = allEntries.findIndex(x=>x.id===e.id)
+        if(i===-1) return
+        allEntries[i].deletedAt = null
+        allEntries[i].updatedAt = Date.now()
+        cancelDeleteJobs(e.id)
+        await saveAndSync(allEntries)
+      }))
+      actions.appendChild(mk('🗑 Définitif', async()=>{
+        if(!confirm('Supprimer définitivement cette entrée de l\'app ?')) return
+        cancelDeleteJobs(e.id)
+        await saveAndSync(allEntries.filter(x=>x.id!==e.id))
+      }, true))
+    } else {
+      actions.appendChild(mk('✏️ Modifier', ()=>openEditModal(e.id)))
+      if(e.myDriveFinal&&e.myDriveFinal.webViewLink) actions.appendChild(mk('🔗 Drive', ()=>window.open(e.myDriveFinal.webViewLink, '_blank')))
+      actions.appendChild(mk('🗑 Corbeille', async()=>{
+        if(!confirm('Envoyer cette entrée dans la corbeille ?')) return
+        const i = allEntries.findIndex(x=>x.id===e.id)
+        if(i===-1) return
+        allEntries[i].deletedAt = Date.now()
+        allEntries[i].updatedAt = Date.now()
+        await saveAndSync(allEntries)
+      }, true))
+      actions.appendChild(mk('☁🗑 Suppr partout', async()=>{
+        if(!confirm('Supprimer cette entrée dans l\'app et supprimer ses fichiers Drive ?')) return
+        const i = allEntries.findIndex(x=>x.id===e.id)
+        if(i===-1) return
+        allEntries[i].deletedAt = Date.now()
+        allEntries[i].updatedAt = Date.now()
+        enqueueDeleteJob(allEntries[i])
+        await saveAndSync(allEntries)
+      }, true))
+    }
+    list.appendChild(card)
+  })
 }
 
 // ── List ──────────────────────────────────────────────
 function renderList(){
-  const items = getContinueEntries(allEntries)
+  const items = getContinueEntries(allEntries).filter(e=>!e.deletedAt)
   const empty = document.getElementById('continueEmpty')
   const workspace = document.getElementById('continueWorkspace')
   const select = document.getElementById('continueSelect')
@@ -2019,11 +2174,30 @@ function renderList(){
   fillSelectOptions(continueCamera, rollCameraNames, entry.cameraName || rollCameraNames[0] || '')
   const fridgeBtn = document.getElementById('moveToFridgeBtn')
   if(fridgeBtn) fridgeBtn.textContent = (entry.supportStatus||'active')==='fridge' ? 'Sortir du frigo' : 'Mettre au frigo'
+  const deleteBtn = document.getElementById('continueDeleteBtn')
+  const deleteEverywhereBtn = document.getElementById('continueDeleteEverywhereBtn')
+  if(deleteBtn) deleteBtn.onclick = async()=>{
+    if(!confirm('Envoyer cette pellicule dans la corbeille ?')) return
+    const i = allEntries.findIndex(x=>x.id===entry.id)
+    if(i===-1) return
+    allEntries[i].deletedAt = Date.now()
+    allEntries[i].updatedAt = Date.now()
+    await saveAndSync(allEntries)
+  }
+  if(deleteEverywhereBtn) deleteEverywhereBtn.onclick = async()=>{
+    if(!confirm('Supprimer cette pellicule dans l\'app et supprimer ses fichiers Drive ?')) return
+    const i = allEntries.findIndex(x=>x.id===entry.id)
+    if(i===-1) return
+    allEntries[i].deletedAt = Date.now()
+    allEntries[i].updatedAt = Date.now()
+    enqueueDeleteJob(allEntries[i])
+    await saveAndSync(allEntries)
+  }
   renderContinueShots(entry)
 }
 function renderStorageBar(){
   const sz=new Blob([JSON.stringify(allEntries)]).size
-  const activeCount = allEntries.filter(e=>e.entryType==='roll' && (e.supportStatus||'active')!=='finished').length
+  const activeCount = allEntries.filter(e=>!e.deletedAt && e.entryType==='roll' && (e.supportStatus||'active')!=='finished').length
   document.getElementById('storageBar').textContent=`${activeCount} pellicule(s) entamee(s) · ~${(sz/1024).toFixed(1)} KB${gToken?' · ✓ Drive':''}`
 }
 function renderAll(){renderList();renderArchivePanel();renderStorageBar();updateDriveInfo()}
@@ -2152,6 +2326,20 @@ bindById('continueSelect', 'change', ev=>{
 })
 bindById('archiveFolderSelect', 'change', ev=>{
   selectedArchiveFolder = ev.target.value || null
+  renderArchivePanel()
+})
+bindById('archiveViewArchive', 'click', ()=>{
+  archiveView = 'archive'
+  selectedArchiveFolder = null
+  document.getElementById('archiveViewArchive')?.classList.add('active')
+  document.getElementById('archiveViewTrash')?.classList.remove('active')
+  renderArchivePanel()
+})
+bindById('archiveViewTrash', 'click', ()=>{
+  archiveView = 'trash'
+  selectedArchiveFolder = null
+  document.getElementById('archiveViewTrash')?.classList.add('active')
+  document.getElementById('archiveViewArchive')?.classList.remove('active')
   renderArchivePanel()
 })
 bindById('saveArchiveFolderNameBtn', 'click', ()=>{
@@ -2402,7 +2590,9 @@ document.getElementById('exportCsv').addEventListener('click',()=>{
   a.click()
 })
 document.getElementById('clearAll').addEventListener('click',async()=>{
-  if(!confirm('Supprimer TOUS les supports ?'))return; await saveAndSync([])
+  if(!confirm('Envoyer TOUS les supports dans la corbeille ?'))return
+  const now = Date.now()
+  await saveAndSync(allEntries.map(e=>({ ...e, deletedAt: now, updatedAt: now })))
 })
 
 // ── Settings panel ───────────────────────────────────
