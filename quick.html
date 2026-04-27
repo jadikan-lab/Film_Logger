@@ -119,18 +119,30 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
 
 /* ── Settings ── */
 .settings-section{background:#fff;border-radius:var(--radius);border:1px solid var(--border);overflow:hidden}
-.settings-section-head{padding:12px 14px;background:#f8f9fb;border-bottom:1px solid var(--border);font-weight:700;font-size:0.92rem;color:#333;display:flex;align-items:center;gap:8px}
+.settings-section-head{
+  width:100%;padding:12px 14px;background:#f8f9fb;border:none;border-bottom:1px solid var(--border);
+  font-weight:700;font-size:0.92rem;color:#333;display:flex;align-items:center;gap:8px;text-align:left;
+  cursor:pointer;min-height:50px;
+}
+.settings-section-head:active{background:#eef3fb}
+.settings-head-title{flex:1}
+.settings-head-summary{font-size:0.78rem;color:#6a7688;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48%}
+.settings-head-chevron{font-size:0.9rem;color:#6a7688;transition:transform .2s ease}
+.settings-section.collapsed .settings-head-chevron{transform:rotate(-90deg)}
+.settings-section-body{display:block}
+.settings-section.collapsed .settings-section-body{display:none}
 .settings-search-row{padding:10px 14px;border-bottom:1px solid #f0f0f0;background:#fff}
 .settings-search-row input{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;outline:none}
 .settings-search-row input:focus{border-color:var(--blue)}
 .settings-list{list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;overscroll-behavior:contain}
-.settings-list li{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid #f0f0f0;font-size:0.9rem}
+.settings-list li{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid #f0f0f0;font-size:0.92rem;min-height:46px}
 .settings-list li:last-child{border-bottom:none}
 .settings-list li span{flex:1;color:#333}
 .settings-list li label{display:flex;align-items:center;gap:10px;width:100%;cursor:pointer;color:#333}
 .settings-list li input[type="checkbox"]{width:18px;height:18px;accent-color:var(--blue)}
 .settings-list li .btn-del{background:none;border:1px solid #e0e0e0;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.8rem;color:#c0392b;line-height:1.6}
 .settings-list li .btn-del:hover{background:#ffeaea;border-color:#c0392b}
+.settings-list li.settings-group{background:#fbfcff;color:#516179;font-size:0.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;min-height:38px}
 .settings-add-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:#fafafa}
 .settings-add-row input{flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;outline:none}
 .settings-add-row input:focus{border-color:var(--blue)}
@@ -614,35 +626,52 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
   </div>
 
   <!-- Pratiques -->
-  <div class="settings-section">
-    <div class="settings-section-head">🎯 Que pratiques-tu ?</div>
+  <div class="settings-section" data-settings-section="practices">
+    <button class="settings-section-head" data-settings-toggle="practices" aria-expanded="true" type="button">
+      <span class="settings-head-title">🎯 Que pratiques-tu ?</span>
+      <span id="settingsSummaryPractices" class="settings-head-summary"></span>
+      <span class="settings-head-chevron">▾</span>
+    </button>
+    <div class="settings-section-body">
     <ul class="settings-list" id="practicesList">
-      <li><strong>Pellicule</strong></li>
+      <li class="settings-group">Pellicule</li>
       <li><label><input type="checkbox" id="prac_roll_35" /> 24x36 (35mm)</label></li>
       <li><label><input type="checkbox" id="prac_roll_120" /> 120</label></li>
-      <li><strong>Plan-film</strong></li>
+      <li class="settings-group">Plan-film</li>
       <li><label><input type="checkbox" id="prac_sheet_4x5" /> 4x5</label></li>
       <li><label><input type="checkbox" id="prac_sheet_5x7" /> 5x7</label></li>
       <li><label><input type="checkbox" id="prac_sheet_8x10" /> 8x10</label></li>
-      <li><strong>Papier</strong></li>
+      <li class="settings-group">Papier</li>
       <li><label><input type="checkbox" id="prac_paper" /> Activer le papier photo</label></li>
       <li><span style="font-size:0.82rem;color:#666">Types de papier gérés dans le catalogue ci-dessous.</span></li>
     </ul>
+    </div>
   </div>
 
   <!-- Appareils -->
-  <div class="settings-section">
-    <div class="settings-section-head">📷 Appareils</div>
+  <div class="settings-section collapsed" data-settings-section="cameras">
+    <button class="settings-section-head" data-settings-toggle="cameras" aria-expanded="false" type="button">
+      <span class="settings-head-title">📷 Appareils</span>
+      <span id="settingsSummaryCameras" class="settings-head-summary"></span>
+      <span class="settings-head-chevron">▾</span>
+    </button>
+    <div class="settings-section-body">
     <ul class="settings-list" id="settingsCameraList"></ul>
     <div class="settings-add-row">
       <input id="settingsCameraInput" type="text" placeholder="Nom de l'appareil…" />
       <button id="settingsCameraAdd">+ Ajouter</button>
     </div>
+    </div>
   </div>
 
   <!-- Pellicules / Supports -->
-  <div class="settings-section">
-    <div class="settings-section-head">🎞 Catalogue pellicules (cocher pour afficher)</div>
+  <div class="settings-section collapsed" data-settings-section="films">
+    <button class="settings-section-head" data-settings-toggle="films" aria-expanded="false" type="button">
+      <span class="settings-head-title">🎞 Catalogue pellicules</span>
+      <span id="settingsSummaryFilms" class="settings-head-summary"></span>
+      <span class="settings-head-chevron">▾</span>
+    </button>
+    <div class="settings-section-body">
     <div class="settings-search-row">
       <input id="settingsFilmFilter" type="text" placeholder="Rechercher une pellicule..." />
     </div>
@@ -651,11 +680,17 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
       <input id="settingsFilmInput" type="text" placeholder="Nom du support (ex: Ilford HP5+ 400)…" />
       <button id="settingsFilmAdd">+ Ajouter</button>
     </div>
+    </div>
   </div>
 
   <!-- Papiers (section séparée) -->
-  <div class="settings-section">
-    <div class="settings-section-head">🖼 Catalogue papiers (cocher pour afficher)</div>
+  <div class="settings-section collapsed" data-settings-section="papers">
+    <button class="settings-section-head" data-settings-toggle="papers" aria-expanded="false" type="button">
+      <span class="settings-head-title">🖼 Catalogue papiers</span>
+      <span id="settingsSummaryPapers" class="settings-head-summary"></span>
+      <span class="settings-head-chevron">▾</span>
+    </button>
+    <div class="settings-section-body">
     <div class="settings-search-row">
       <input id="settingsPaperFilter" type="text" placeholder="Rechercher un papier..." />
     </div>
@@ -663,6 +698,7 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
     <div class="settings-add-row">
       <input id="settingsPaperInput" type="text" placeholder="Nom du papier (ex: Ilford RC Multigrade)…" />
       <button id="settingsPaperAdd">+ Ajouter</button>
+    </div>
     </div>
   </div>
 </div>
@@ -2085,8 +2121,10 @@ bindById('addStockBtn', 'click', ()=>{
 initReferenceLists()
 loadArchiveFolderNames()
 loadPractices()
+initSettingsAccordion()
 renderPracticesCheckboxes()
 applyPracticeVisibility()
+updateSettingsSummaries()
 renderSpPanel()
 renderShutterSelect()
 renderApertureSelect()
@@ -2343,6 +2381,44 @@ function renderSettingsPanel(){
   })
   renderSettingsCheckList('settingsFilmList', CATALOG_FILM_STOCKS, filmStocks, LS_FILM_STOCKS_KEY, settingsFilmFilter)
   renderSettingsCheckList('settingsPaperList', CATALOG_PAPER_STOCKS, paperStocks, LS_PAPER_STOCKS_KEY, settingsPaperFilter)
+  updateSettingsSummaries()
+}
+
+function updateSettingsSummaries(){
+  const practices = []
+  if(userPractices['roll_35']) practices.push('35')
+  if(userPractices['roll_120']) practices.push('120')
+  if(userPractices['sheet_4x5']) practices.push('4x5')
+  if(userPractices['sheet_5x7']) practices.push('5x7')
+  if(userPractices['sheet_8x10']) practices.push('8x10')
+  if(userPractices['paper']) practices.push('papier')
+  const sp = document.getElementById('settingsSummaryPractices')
+  if(sp) sp.textContent = practices.length ? practices.join(', ') : 'Aucune pratique'
+
+  const sc = document.getElementById('settingsSummaryCameras')
+  if(sc) sc.textContent = `${(cameraOptions||[]).length} appareil(s)`
+
+  const sf = document.getElementById('settingsSummaryFilms')
+  if(sf) sf.textContent = `${(filmStocks||[]).length} sélectionnée(s)`
+
+  const spp = document.getElementById('settingsSummaryPapers')
+  if(spp) spp.textContent = `${(paperStocks||[]).length} sélectionné(s)`
+}
+
+function setSettingsSection(sectionName){
+  const sections = document.querySelectorAll('#panelSettings .settings-section[data-settings-section]')
+  sections.forEach(sec=>{
+    const open = sec.dataset.settingsSection === sectionName
+    sec.classList.toggle('collapsed', !open)
+    const btn = sec.querySelector('.settings-section-head')
+    if(btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false')
+  })
+}
+
+function initSettingsAccordion(){
+  document.querySelectorAll('#panelSettings [data-settings-toggle]').forEach(btn=>{
+    btn.addEventListener('click', ()=>setSettingsSection(btn.dataset.settingsToggle))
+  })
 }
 
 function settingsAddItem(inputId, getter, setter, lsKey, renderFn){
@@ -2368,7 +2444,7 @@ function switchTab(tabId){
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   switchTab(t.dataset.tab)
-  if(t.dataset.tab==='panelSettings'){ renderSettingsPanel(); renderPracticesCheckboxes() }
+  if(t.dataset.tab==='panelSettings'){ renderSettingsPanel(); renderPracticesCheckboxes(); setSettingsSection('practices') }
   if(t.dataset.tab==='panelSessions') renderArchivePanel()
   if(t.dataset.tab==='panelSheetPaper') renderSpPanel()
 }))
@@ -2379,6 +2455,7 @@ PRACTICE_KEYS.forEach(k=>{
     userPractices[k] = e.target.checked
     savePractices()
     applyPracticeVisibility()
+    updateSettingsSummaries()
   })
 })
 
