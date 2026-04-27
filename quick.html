@@ -129,12 +129,22 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
 .settings-head-summary{font-size:0.78rem;color:#6a7688;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48%}
 .settings-head-chevron{font-size:0.9rem;color:#6a7688;transition:transform .2s ease}
 .settings-section.collapsed .settings-head-chevron{transform:rotate(-90deg)}
-.settings-section-body{display:block}
+.settings-section-body{display:block;overflow-y:auto;max-height:420px;overscroll-behavior:contain}
 .settings-section.collapsed .settings-section-body{display:none}
-.settings-search-row{padding:10px 14px;border-bottom:1px solid #f0f0f0;background:#fff}
+.settings-search-row{padding:10px 14px;border-bottom:1px solid #f0f0f0;background:#fff;position:sticky;top:0;z-index:2}
 .settings-search-row input{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;outline:none}
 .settings-search-row input:focus{border-color:var(--blue)}
-.settings-list{list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;overscroll-behavior:contain}
+.settings-list{list-style:none;margin:0;padding:0}
+.voir-plus-btn{display:block;width:100%;padding:9px 14px;background:none;border:none;border-top:1px solid #f0f0f0;color:var(--blue);font-size:0.85rem;cursor:pointer;text-align:center;font-weight:600}
+.voir-plus-btn:hover{background:#f0f6ff}
+.camera-fmt-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.fmt-tag{padding:2px 7px;border-radius:12px;font-size:0.72rem;font-weight:700;cursor:pointer;border:1.5px solid #c8d5e8;background:#f5f8fc;color:#4a6080;line-height:1.6;transition:background .15s,color .15s}
+.fmt-tag.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.camera-formats-add{display:flex;flex-wrap:wrap;gap:6px;padding:6px 0}
+.camera-formats-add label{display:flex;align-items:center;gap:4px;font-size:0.82rem;color:#444;cursor:pointer}
+.camera-formats-add input[type=checkbox]{width:15px;height:15px;accent-color:var(--blue)}
+.camera-item-name{flex:1;font-size:0.92rem;color:#222;font-weight:600}
+.camera-item-fmt{flex:1}
 .settings-list li{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid #f0f0f0;font-size:0.92rem;min-height:46px}
 .settings-list li:last-child{border-bottom:none}
 .settings-list li span{flex:1;color:#333}
@@ -657,9 +667,19 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
     </button>
     <div class="settings-section-body">
     <ul class="settings-list" id="settingsCameraList"></ul>
-    <div class="settings-add-row">
-      <input id="settingsCameraInput" type="text" placeholder="Nom de l'appareil…" />
-      <button id="settingsCameraAdd">+ Ajouter</button>
+    <div class="settings-add-row" style="flex-direction:column;gap:6px">
+      <div style="display:flex;gap:8px">
+        <input id="settingsCameraInput" type="text" placeholder="Nom de l'appareil…" style="flex:1" />
+        <button id="settingsCameraAdd">+ Ajouter</button>
+      </div>
+      <div class="camera-formats-add" id="cameraAddFormats">
+        <label><input type="checkbox" value="roll_35"> 35mm</label>
+        <label><input type="checkbox" value="roll_120"> 120</label>
+        <label><input type="checkbox" value="sheet_4x5"> 4×5</label>
+        <label><input type="checkbox" value="sheet_5x7"> 5×7</label>
+        <label><input type="checkbox" value="sheet_8x10"> 8×10</label>
+        <label><input type="checkbox" value="paper"> Papier</label>
+      </div>
     </div>
     </div>
   </div>
@@ -771,7 +791,8 @@ const IDB_KEY        = 'film_logger_entries_v1'
 const LEGACY_IDB_KEY = 'solar_entries_v3'
 const UPLOAD_CONCURRENCY = 3   // parallel uploads at a time
 
-const LS_CAMERAS_KEY = 'ref_cameras_v1'
+const LS_CAMERAS_KEY = 'ref_cameras_v2'
+const LS_CAMERAS_KEY_V1 = 'ref_cameras_v1' // legacy migration only
 const LS_FILM_STOCKS_KEY = 'ref_film_stocks_v1'
 const LS_PAPER_STOCKS_KEY = 'ref_paper_stocks_v1'
 const LS_ARCHIVE_FOLDERS_KEY = 'archive_folder_names_v1'
@@ -827,14 +848,16 @@ const CATALOG_PAPER_STOCKS = [
 ]
 
 const DEFAULT_CAMERAS = [
-  'Will Travel 4x5',
-  'Will Travel 5x7',
-  'DIY 8x10',
-  '3D World Stereo',
-  'Spoutnik Stereo',
-  'Leica M4',
-  'Stenope 3D Print V2'
+  { name: 'Will Travel 4x5',    formats: ['sheet_4x5', 'paper'] },
+  { name: 'Will Travel 5x7',    formats: ['sheet_5x7'] },
+  { name: 'DIY 8x10',           formats: ['sheet_8x10', 'paper'] },
+  { name: '3D World Stereo',    formats: ['roll_120'] },
+  { name: 'Spoutnik Stereo',    formats: ['roll_120'] },
+  { name: 'Leica M4',           formats: ['roll_35'] },
+  { name: 'Stenope 3D Print V2', formats: ['paper'] }
 ]
+const CAMERA_FORMAT_KEYS   = ['roll_35','roll_120','sheet_4x5','sheet_5x7','sheet_8x10','paper']
+const CAMERA_FORMAT_LABELS = {roll_35:'35mm',roll_120:'120',sheet_4x5:'4×5',sheet_5x7:'5×7',sheet_8x10:'8×10',paper:'Papier'}
 
 const DEFAULT_FILM_STOCKS = [
   'Ilford HP5+ 400',
@@ -1007,6 +1030,46 @@ function saveRefList(key, arr){
   try{ localStorage.setItem(key, JSON.stringify(arr)) }catch(e){}
 }
 
+// ── Camera objects {name, formats[]} ─────────────────
+function loadCameras(){
+  try{
+    const raw = localStorage.getItem(LS_CAMERAS_KEY)
+    if(raw){
+      const arr = JSON.parse(raw)
+      if(Array.isArray(arr) && arr.length) return arr
+    }
+  }catch{}
+  // migrate from v1 (strings)
+  try{
+    const raw = localStorage.getItem(LS_CAMERAS_KEY_V1)
+    if(raw){
+      const arr = JSON.parse(raw)
+      if(Array.isArray(arr) && arr.length){
+        const migrated = arr.map(v=>typeof v==='string' ? {name:v, formats:[]} : v)
+        saveCameras(migrated)
+        return migrated
+      }
+    }
+  }catch{}
+  return DEFAULT_CAMERAS.map(c=>({...c, formats:[...(c.formats||[])]}))
+}
+function saveCameras(arr){
+  try{ localStorage.setItem(LS_CAMERAS_KEY, JSON.stringify(arr)) }catch{}
+}
+function sortedCameras(arr){
+  return [...(arr||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||'','fr'))
+}
+function camerasForContext(ctx){
+  // ctx: one of CAMERA_FORMAT_KEYS — cameras with no formats show everywhere
+  return cameraOptions.filter(c=>!c.formats||!c.formats.length||c.formats.includes(ctx))
+}
+function cameraNamesForContext(ctx){
+  return camerasForContext(ctx).map(c=>c.name)
+}
+function cameraByName(name){
+  return cameraOptions.find(c=>c.name===name) || null
+}
+
 function uniqueSorted(arr){
   return Array.from(new Set((arr||[]).map(v=>(v||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'fr'))
 }
@@ -1034,7 +1097,9 @@ function fillSelectOptions(el, values, selected){
 
 function renderCameraSelect(selected){
   const el = document.getElementById('cameraSelect')
-  fillSelectOptions(el, cameraOptions, selected)
+  const fmt = document.getElementById('filmFormat')?.value || ''
+  const ctx = fmt.includes('120') ? 'roll_120' : 'roll_35'
+  fillSelectOptions(el, cameraNamesForContext(ctx), selected)
 }
 
 function getFormatsBySupportType(supportType){
@@ -1074,7 +1139,7 @@ function inferMaterialTypeByStock(stockName){
 }
 
 function initReferenceLists(){
-  cameraOptions = uniqueSorted(loadRefList(LS_CAMERAS_KEY, DEFAULT_CAMERAS))
+  cameraOptions = sortedCameras(loadCameras())
   filmStocks = uniqueSorted(loadRefList(LS_FILM_STOCKS_KEY, DEFAULT_FILM_STOCKS))
   paperStocks = uniqueSorted(loadRefList(LS_PAPER_STOCKS_KEY, DEFAULT_PAPER_STOCKS))
   renderCameraSelect()
@@ -1176,7 +1241,15 @@ function renderSpStockSelect(keepVal){
 
 function renderSpCameraSelect(){
   const sel = document.getElementById('spCamera')
-  fillSelectOptions(sel, cameraOptions)
+  let ctx
+  if(spSubType==='paper') ctx='paper'
+  else {
+    const fmtVal = document.getElementById('spFormat')?.value || ''
+    if(fmtVal.startsWith('8x10')) ctx='sheet_8x10'
+    else if(fmtVal.startsWith('5x7')) ctx='sheet_5x7'
+    else ctx='sheet_4x5'
+  }
+  fillSelectOptions(sel, cameraNamesForContext(ctx))
 }
 
 function renderSpPanel(){
@@ -1934,7 +2007,10 @@ function renderList(){
   renderContinueCurrentFrame(entry)
   renderContinueSummary(entry)
   const continueCamera = document.getElementById('continueCameraSelect')
-  fillSelectOptions(continueCamera, cameraOptions, entry.cameraName || cameraOptions[0] || '')
+  const rollCameraNames = cameraNamesForContext('roll_35').concat(
+    cameraNamesForContext('roll_120').filter(n=>!cameraNamesForContext('roll_35').includes(n))
+  )
+  fillSelectOptions(continueCamera, rollCameraNames, entry.cameraName || rollCameraNames[0] || '')
   const fridgeBtn = document.getElementById('moveToFridgeBtn')
   if(fridgeBtn) fridgeBtn.textContent = (entry.supportStatus||'active')==='fridge' ? 'Sortir du frigo' : 'Mettre au frigo'
   renderContinueShots(entry)
@@ -2086,14 +2162,21 @@ bindById('saveArchiveFolderNameBtn', 'click', ()=>{
 function addCameraOption(prefill){
   const name = (prefill || prompt('Nom du nouvel appareil ?') || '').trim()
   if(!name) return false
-  cameraOptions = uniqueSorted(cameraOptions.concat(name))
-  saveRefList(LS_CAMERAS_KEY, cameraOptions)
+  if(cameraOptions.find(c=>c.name===name)){ toast('Cet appareil existe déjà'); return false }
+  const cam = { name, formats: [] }
+  cameraOptions = sortedCameras(cameraOptions.concat(cam))
+  saveCameras(cameraOptions)
   renderCameraSelect(name)
   renderSpCameraSelect()
   const continueSel = document.getElementById('continueCameraSelect')
-  if(continueSel) fillSelectOptions(continueSel, cameraOptions, name)
+  if(continueSel){
+    const rollNames = cameraNamesForContext('roll_35').concat(
+      cameraNamesForContext('roll_120').filter(n=>!cameraNamesForContext('roll_35').includes(n))
+    )
+    fillSelectOptions(continueSel, rollNames, name)
+  }
   renderSettingsPanel()
-  toast('Appareil ajouté')
+  toast('Appareil ajouté — configure ses formats dans les réglages')
   return true
 }
 
@@ -2132,6 +2215,10 @@ renderApertureSelect()
 bindById('stopMode_full',  'click', ()=>setStopMode('full'))
 bindById('stopMode_half',  'click', ()=>setStopMode('half'))
 bindById('stopMode_third', 'click', ()=>setStopMode('third'))
+// re-filter camera list when roll format changes (35mm ↔ 120)
+bindById('filmFormat', 'change', ()=> renderCameraSelect())
+// re-filter camera list when SP format changes
+bindById('spFormat', 'change', ()=> renderSpCameraSelect())
 bindById('shotShutter', 'change', e=>{
   const bulbRow = document.getElementById('bulbRow')
   if(bulbRow) bulbRow.style.display = e.target.value==='Bulb' ? 'flex' : 'none'
@@ -2313,6 +2400,73 @@ document.getElementById('clearAll').addEventListener('click',async()=>{
 })
 
 // ── Settings panel ───────────────────────────────────
+const VOIR_PLUS_STEP = 8
+
+function renderSettingsCameraList(showCount){
+  const ul = document.getElementById('settingsCameraList')
+  if(!ul) return
+  ul.innerHTML = ''
+  const items = cameraOptions
+  if(!items.length){
+    ul.innerHTML = '<li style="color:#aaa;font-size:0.85rem;padding:10px 14px">Aucun appareil</li>'
+    return
+  }
+  const visibleCount = showCount || VOIR_PLUS_STEP
+  const visible = items.slice(0, visibleCount)
+  visible.forEach(cam=>{
+    const li = document.createElement('li')
+    li.style.cssText = 'flex-direction:column;align-items:flex-start;gap:6px;padding:10px 14px'
+    const topRow = document.createElement('div')
+    topRow.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%'
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'camera-item-name'
+    nameSpan.textContent = cam.name
+    const delBtn = document.createElement('button')
+    delBtn.className = 'btn-del'
+    delBtn.textContent = '✕ Retirer'
+    delBtn.addEventListener('click', ()=>{
+      cameraOptions = cameraOptions.filter(c=>c.name!==cam.name)
+      saveCameras(cameraOptions)
+      renderCameraSelect(); renderSpCameraSelect()
+      renderSettingsPanel()
+    })
+    topRow.appendChild(nameSpan)
+    topRow.appendChild(delBtn)
+    const fmtRow = document.createElement('div')
+    fmtRow.className = 'camera-fmt-tags'
+    CAMERA_FORMAT_KEYS.forEach(fk=>{
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'fmt-tag' + (cam.formats&&cam.formats.includes(fk) ? ' on' : '')
+      btn.textContent = CAMERA_FORMAT_LABELS[fk]
+      btn.title = fk
+      btn.addEventListener('click', ()=>{
+        const idx = cameraOptions.findIndex(c=>c.name===cam.name)
+        if(idx===-1) return
+        const fmts = cameraOptions[idx].formats || []
+        cameraOptions[idx].formats = fmts.includes(fk)
+          ? fmts.filter(f=>f!==fk)
+          : fmts.concat(fk)
+        saveCameras(cameraOptions)
+        btn.classList.toggle('on', cameraOptions[idx].formats.includes(fk))
+        renderCameraSelect(); renderSpCameraSelect()
+      })
+      fmtRow.appendChild(btn)
+    })
+    li.appendChild(topRow)
+    li.appendChild(fmtRow)
+    ul.appendChild(li)
+  })
+  if(items.length > visibleCount){
+    const btn = document.createElement('button')
+    btn.className = 'voir-plus-btn'
+    const remaining = items.length - visibleCount
+    btn.textContent = `Voir ${Math.min(remaining, VOIR_PLUS_STEP)} appareil(s) de plus…`
+    btn.addEventListener('click', ()=> renderSettingsCameraList(visibleCount + VOIR_PLUS_STEP))
+    ul.appendChild(btn)
+  }
+}
+
 function renderSettingsList(ulId, items, onDelete){
   const ul = document.getElementById(ulId)
   if(!ul) return
@@ -2329,7 +2483,7 @@ function renderSettingsList(ulId, items, onDelete){
   })
 }
 
-function renderSettingsCheckList(ulId, catalogItems, activeItems, lsKey, filterText){
+function renderSettingsCheckList(ulId, catalogItems, activeItems, lsKey, filterText, showCount){
   const ul = document.getElementById(ulId)
   if(!ul) return
   const query = normalizeForSearch(filterText)
@@ -2341,7 +2495,9 @@ function renderSettingsCheckList(ulId, catalogItems, activeItems, lsKey, filterT
     ul.innerHTML = '<li style="color:#aaa;font-size:0.85rem;padding:10px 14px">Aucun résultat</li>'
     return
   }
-  catalog.forEach(item=>{
+  const visibleCount = showCount || VOIR_PLUS_STEP
+  const visible = catalog.slice(0, visibleCount)
+  visible.forEach(item=>{
     const li = document.createElement('li')
     const label = document.createElement('label')
     const checkbox = document.createElement('input')
@@ -2365,6 +2521,14 @@ function renderSettingsCheckList(ulId, catalogItems, activeItems, lsKey, filterT
     })
     ul.appendChild(li)
   })
+  if(catalog.length > visibleCount){
+    const btn = document.createElement('button')
+    btn.className = 'voir-plus-btn'
+    const remaining = catalog.length - visibleCount
+    btn.textContent = `Voir ${Math.min(remaining, VOIR_PLUS_STEP)} de plus…`
+    btn.addEventListener('click', ()=> renderSettingsCheckList(ulId, catalogItems, activeItems, lsKey, filterText, visibleCount + VOIR_PLUS_STEP))
+    ul.appendChild(btn)
+  }
 }
 
 function renderSettingsPanel(){
@@ -2373,12 +2537,7 @@ function renderSettingsPanel(){
   if(filmFilterInput) filmFilterInput.value = settingsFilmFilter
   if(paperFilterInput) paperFilterInput.value = settingsPaperFilter
 
-  renderSettingsList('settingsCameraList', cameraOptions, item=>{
-    cameraOptions = cameraOptions.filter(v=>v!==item)
-    saveRefList(LS_CAMERAS_KEY, cameraOptions)
-    renderCameraSelect()
-    renderSettingsPanel()
-  })
+  renderSettingsCameraList()
   renderSettingsCheckList('settingsFilmList', CATALOG_FILM_STOCKS, filmStocks, LS_FILM_STOCKS_KEY, settingsFilmFilter)
   renderSettingsCheckList('settingsPaperList', CATALOG_PAPER_STOCKS, paperStocks, LS_PAPER_STOCKS_KEY, settingsPaperFilter)
   updateSettingsSummaries()
@@ -2405,6 +2564,8 @@ function updateSettingsSummaries(){
   if(spp) spp.textContent = `${(paperStocks||[]).length} sélectionné(s)`
 }
 
+const LS_SETTINGS_OPEN_SECTION = 'settings_open_section_v1'
+
 function setSettingsSection(sectionName){
   const sections = document.querySelectorAll('#panelSettings .settings-section[data-settings-section]')
   sections.forEach(sec=>{
@@ -2413,12 +2574,18 @@ function setSettingsSection(sectionName){
     const btn = sec.querySelector('.settings-section-head')
     if(btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false')
   })
+  try{ localStorage.setItem(LS_SETTINGS_OPEN_SECTION, sectionName) }catch{}
 }
 
 function initSettingsAccordion(){
   document.querySelectorAll('#panelSettings [data-settings-toggle]').forEach(btn=>{
     btn.addEventListener('click', ()=>setSettingsSection(btn.dataset.settingsToggle))
   })
+  // restore last open section
+  try{
+    const saved = localStorage.getItem(LS_SETTINGS_OPEN_SECTION)
+    if(saved) setSettingsSection(saved)
+  }catch{}
 }
 
 function settingsAddItem(inputId, getter, setter, lsKey, renderFn){
@@ -2483,7 +2650,20 @@ bindById('settingsCameraAdd', 'click', ()=>{
   if(!input) return
   const value = (input.value||'').trim()
   if(!value){ input.focus(); return }
-  if(addCameraOption(value)){ input.value=''; input.focus() }
+  if(cameraOptions.find(c=>c.name===value)){ toast('Cet appareil existe déjà'); input.select(); return }
+  const fmtChecks = document.querySelectorAll('#cameraAddFormats input[type=checkbox]:checked')
+  const formats = Array.from(fmtChecks).map(cb=>cb.value)
+  const cam = { name: value, formats }
+  cameraOptions = sortedCameras(cameraOptions.concat(cam))
+  saveCameras(cameraOptions)
+  renderCameraSelect(); renderSpCameraSelect()
+  renderSettingsPanel()
+  updateSettingsSummaries()
+  input.value = ''
+  // reset checkboxes
+  document.querySelectorAll('#cameraAddFormats input[type=checkbox]').forEach(cb=>{ cb.checked=false })
+  input.focus()
+  toast('Appareil ajouté ✓')
 })
 bindById('settingsCameraInput', 'keydown', e=>{ if(e.key==='Enter') document.getElementById('settingsCameraAdd')?.click() })
 
