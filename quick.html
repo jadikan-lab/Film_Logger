@@ -1715,7 +1715,13 @@ async function publishEntriesToMyDrive(entries){
   if(statusEl) statusEl.textContent = 'Mise à jour des fichiers de synthèse…'
   await uploadJSONToFolder(entries,DRIVE_FILENAME,folderId)
   await uploadTextToFolder(entriesToCsv(entries), 'film_logger_entries.csv', 'text/csv', folderId)
-  await upsertGoogleSheetInFolder(entries, folderId)
+  try{
+    await upsertGoogleSheetInFolder(entries, folderId)
+  }catch(sheetErr){
+    // Sheets API may be disabled — non-blocking, Drive JSON/CSV were already saved
+    console.warn('Google Sheet update skipped:', sheetErr)
+    if(statusEl) statusEl.textContent = '⚠ Google Sheets non activé (Drive JSON/CSV OK)'
+  }
   if(statusEl) statusEl.textContent = total>0 ? `✓ ${total} photos publiées` : '✓ Métadonnées mises à jour'
   if(progEl) progEl.value = 100
 
