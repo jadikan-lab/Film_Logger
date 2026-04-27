@@ -726,10 +726,11 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
 // CONFIG
 // ═══════════════════════════════════════════════════════
 const GOOGLE_CLIENT_ID = '724133061731-g3lmkdkm84ejd2utads9a0i2sj63m1j9.apps.googleusercontent.com'
-const DRIVE_SCOPE    = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file'
+const DRIVE_SCOPE    = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets'
 const DRIVE_FILENAME = 'film_logger_entries.json'
 const LEGACY_DRIVE_FILENAMES = ['solargraph_entries.json']
 const MYDRIVE_FOLDER_NAME = 'Film_Logger'
+const DRIVE_SHEET_FILENAME = 'film_logger_entries_sheet'
 const IDB_KEY        = 'film_logger_entries_v1'
 const LEGACY_IDB_KEY = 'solar_entries_v3'
 const UPLOAD_CONCURRENCY = 3   // parallel uploads at a time
@@ -1431,6 +1432,84 @@ async function uploadTextToFolder(text, filename, mimeType, folderId){
   return r.json()
 }
 
+async function driveFindSpreadsheetInFolder(folderId, filename){
+  const q = encodeURIComponent(`name='${filename}' and mimeType='application/vnd.google-apps.spreadsheet' and '${folderId}' in parents`)
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,webViewLink)`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d = await r.json()
+  return d.files && d.files[0] ? d.files[0] : null
+}
+
+async function driveCreateSpreadsheetInFolder(folderId, filename){
+  const r = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method:'POST',
+    headers:{Authorization:`Bearer ${gToken}`,'Content-Type':'application/json'},
+    body: JSON.stringify({
+      name: filename,
+      mimeType: 'application/vnd.google-apps.spreadsheet',
+      parents: [folderId]
+    })
+  })
+  const d = await r.json()
+  return d && d.id ? d : null
+}
+
+function entriesToSheetRows(entries){
+  const headers = [
+    'id','createdAt','updatedAt','entryType','materialType','supportStatus','stockName','filmFormat','cameraName',
+    'frameCount','shotsTaken','sheetCount','sheetsExposed','ratedIso','expiresYear','finishedAt','notes'
+  ]
+  const rows = [headers]
+  for(const e of (entries||[])){
+    rows.push([
+      e.id || '',
+      e.createdAt ? new Date(e.createdAt).toISOString() : '',
+      e.updatedAt ? new Date(e.updatedAt).toISOString() : '',
+      e.entryType || '',
+      e.materialType || '',
+      e.supportStatus || '',
+      e.stockName || '',
+      e.filmFormat || '',
+      e.cameraName || '',
+      e.frameCount ?? '',
+      e.shotsTaken ?? '',
+      e.sheetCount ?? '',
+      e.sheetsExposed ?? '',
+      e.ratedIso ?? '',
+      e.expiresYear || '',
+      e.finishedAt ? new Date(e.finishedAt).toISOString() : '',
+      e.notes || ''
+    ])
+  }
+  return rows
+}
+
+async function updateSpreadsheetValues(spreadsheetId, rows){
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A1:ZZ100000:clear`, {
+    method: 'POST',
+    headers: {Authorization:`Bearer ${gToken}`, 'Content-Type':'application/json'},
+    body: JSON.stringify({})
+  })
+
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A1?valueInputOption=RAW`, {
+    method: 'PUT',
+    headers: {Authorization:`Bearer ${gToken}`, 'Content-Type':'application/json'},
+    body: JSON.stringify({range:'A1', majorDimension:'ROWS', values: rows})
+  })
+  if(!r.ok){
+    const txt = await r.text()
+    throw new Error(`sheets_update_failed_${r.status}:${txt}`)
+  }
+}
+
+async function upsertGoogleSheetInFolder(entries, folderId){
+  let sheetMeta = await driveFindSpreadsheetInFolder(folderId, DRIVE_SHEET_FILENAME)
+  if(!sheetMeta) sheetMeta = await driveCreateSpreadsheetInFolder(folderId, DRIVE_SHEET_FILENAME)
+  if(!sheetMeta || !sheetMeta.id) throw new Error('sheet_create_failed')
+  const rows = entriesToSheetRows(entries)
+  await updateSpreadsheetValues(sheetMeta.id, rows)
+  return sheetMeta
+}
+
 function toCsvCell(value){
   const raw = value == null ? '' : String(value)
   const escaped = raw.replace(/"/g, '""')
@@ -1524,8 +1603,10 @@ async function publishEntriesToMyDrive(entries){
 
   if(total===0 && statusEl) statusEl.textContent = 'Aucune nouvelle photo à publier'
 
+  if(statusEl) statusEl.textContent = 'Mise à jour des fichiers de synthèse…'
   await uploadJSONToFolder(entries,DRIVE_FILENAME,folderId)
   await uploadTextToFolder(entriesToCsv(entries), 'film_logger_entries.csv', 'text/csv', folderId)
+  await upsertGoogleSheetInFolder(entries, folderId)
   if(statusEl) statusEl.textContent = total>0 ? `✓ ${total} photos publiées` : '✓ Métadonnées mises à jour'
   if(progEl) progEl.value = 100
 
