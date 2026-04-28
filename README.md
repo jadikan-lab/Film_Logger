@@ -30,6 +30,17 @@ Entrées disponibles :
 
 Pour la version publiée, la référence reste `quick.html`.
 
+## Workflow
+
+La methode de travail du repo est decrite dans `WORKFLOW.md`.
+
+Resume rapide :
+
+- `quick.html` = base fonctionnelle stable
+- `preview.html` = preview design
+- `main` = stable publiee
+- `feature/`, `fix/`, `design/`, `chore/`, `backup/` = conventions de branches
+
 ## Stack
 
 - HTML/CSS/JS pur — single-file
