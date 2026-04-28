@@ -17,12 +17,16 @@ window.onGoogleLibraryLoad = function(){
 // Cleanup for legacy PWA cache so users get the latest published app.
 ;(async () => {
   if (!('serviceWorker' in navigator)) return
+  const scopeMarker = '/Film_Logger/'
+  const cachePrefixes = ['solargraph-', 'film-logger-']
   try {
     const regs = await navigator.serviceWorker.getRegistrations()
-    await Promise.all(regs.map((reg) => reg.unregister()))
+    const targetRegs = regs.filter((reg) => reg.scope.includes(scopeMarker))
+    await Promise.all(targetRegs.map((reg) => reg.unregister()))
     if ('caches' in window) {
       const keys = await caches.keys()
-      await Promise.all(keys.map((key) => caches.delete(key)))
+      const targetKeys = keys.filter((key) => cachePrefixes.some((prefix) => key.startsWith(prefix)))
+      await Promise.all(targetKeys.map((key) => caches.delete(key)))
     }
   } catch (_) {}
 })()

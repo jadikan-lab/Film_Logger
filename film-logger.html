@@ -734,6 +734,66 @@ async function saveAll(){
   await localforage.setItem(IDB_KEY_ROLLS, allRolls)
 }
 
+function csvEscape(value){
+  const s = String(value ?? '')
+  return `"${s.replace(/"/g, '""')}"`
+}
+
+function normalizeText(value, fallback='', maxLen=500){
+  if(typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  if(!trimmed) return fallback
+  return trimmed.slice(0, maxLen)
+}
+
+function normalizeImportData(data){
+  if(!data || typeof data !== 'object') throw new Error('Format invalide')
+  if(!Array.isArray(data.shots)) throw new Error('Format invalide: shots manquant')
+
+  const importedRolls = Array.isArray(data.rolls) ? data.rolls : []
+  const rolls = importedRolls.map((r, i)=>({
+    id: normalizeText(r?.id, uid(), 80),
+    name: normalizeText(r?.name, `Rouleau ${i+1}`, 120),
+    createdAt: Number.isFinite(r?.createdAt) ? Number(r.createdAt) : Date.now()
+  }))
+
+  const validRollIds = new Set(rolls.map(r=>r.id))
+  const validCameras = new Set(Object.keys(CAMERA_LABELS))
+  const validEnvs = new Set(Object.keys(ENV_LABELS))
+
+  const shots = data.shots.map((s)=>{
+    const rawRollId = normalizeText(s?.rollId, '', 80)
+    const rollId = validRollIds.has(rawRollId) ? rawRollId : ''
+    const camera = normalizeText(s?.camera, 'will_travel_4x5', 80)
+    return {
+      id: normalizeText(s?.id, uid(), 80),
+      createdAt: Number.isFinite(s?.createdAt) ? Number(s.createdAt) : Date.now(),
+      rollId,
+      shotNumber: Number.isFinite(s?.shotNumber) && s.shotNumber > 0 ? Number(s.shotNumber) : 0,
+      camera: validCameras.has(camera) ? camera : 'will_travel_4x5',
+      film: normalizeText(s?.film, 'Autre / Inconnu', 120),
+      shutter: normalizeText(s?.shutter, '?', 30),
+      aperture: normalizeText(s?.aperture, '?', 30),
+      focus: normalizeText(s?.focus, '?', 40),
+      env: validEnvs.has(s?.env) ? s.env : '',
+      notes: normalizeText(s?.notes, '', 3000),
+      photos: Array.isArray(s?.photos) ? s.photos.filter(p=>typeof p === 'string') : []
+    }
+  })
+
+  return { shots, rolls }
+}
+
+function reindexShotNumbers(){
+  const counters = {}
+  const ordered = allShots.slice().sort((a,b)=>a.createdAt - b.createdAt)
+  ordered.forEach(shot=>{
+    const key = shot.rollId || '__no_roll__'
+    counters[key] = (counters[key] || 0) + 1
+    shot.shotNumber = counters[key]
+  })
+}
+
 // ── Rolls ──────────────────────────────────────────────
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6) }
 
@@ -834,6 +894,13 @@ function renderPhotosPreview(containerId, photos, onDelete){
     div.innerHTML = `<img src="${src}"><button class="del-ph" data-i="${i}">✕</button>`
     div.querySelector('.del-ph').addEventListener('click', ()=>onDelete(i))
     wrap.appendChild(div)
+  })
+}
+
+function refreshPendingPhotos(){
+  renderPhotosPreview('photosPreview', pendingPhotos, i=>{
+    pendingPhotos.splice(i,1)
+    refreshPendingPhotos()
   })
 }
 
@@ -1088,6 +1155,7 @@ async function saveEdit(){
 async function deleteShot(id){
   if(!confirm('Supprimer cette prise ?')) return
   allShots = allShots.filter(s=>s.id!==id)
+  reindexShotNumbers()
   await saveAll()
   renderAll()
   toast('🗑 Prise supprimée')
@@ -1106,7 +1174,7 @@ function exportCSV(){
   const rows = [cols.join(';')]
   allShots.forEach(s=>{
     const roll = allRolls.find(r=>r.id===s.rollId)
-    rows.push([
+    const row = [
       new Date(s.createdAt).toISOString(),
       s.shotNumber,
       (roll ? roll.name : ''),
@@ -1116,8 +1184,9 @@ function exportCSV(){
       s.aperture,
       s.focus,
       envLabel(s.env),
-      '"'+(s.notes||'').replace(/"/g,"'")+'"'
-    ].join(';'))
+      s.notes || ''
+    ].map(csvEscape).join(';')
+    rows.push(row)
   })
   const blob = new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'})
   const a = document.createElement('a')
@@ -1199,10 +1268,7 @@ document.getElementById('photoInput').addEventListener('change', async e=>{
     const compressed = await compressImage(f)
     pendingPhotos.push(compressed)
   }
-  renderPhotosPreview('photosPreview', pendingPhotos, i=>{
-    pendingPhotos.splice(i,1)
-    renderPhotosPreview('photosPreview', pendingPhotos, arguments.callee)
-  })
+  refreshPendingPhotos()
   e.target.value = ''
 })
 
@@ -1268,10 +1334,11 @@ document.getElementById('importInput').addEventListener('change', async e=>{
   try{
     const text = await file.text()
     const data = JSON.parse(text)
-    if(!data.shots || !Array.isArray(data.shots)) throw new Error('Format invalide')
-    if(!confirm(`Importer ${data.shots.length} prise(s) et ${(data.rolls||[]).length} rouleau(x) ?\n\nCela remplacera toutes les données actuelles.`)) return
-    allShots = data.shots
-    allRolls = data.rolls || []
+    const normalized = normalizeImportData(data)
+    if(!confirm(`Importer ${normalized.shots.length} prise(s) et ${normalized.rolls.length} rouleau(x) ?\n\nCela remplacera toutes les données actuelles.`)) return
+    allShots = normalized.shots
+    allRolls = normalized.rolls
+    reindexShotNumbers()
     await saveAll()
     renderAll()
     document.getElementById('settingsOverlay').classList.remove('open')
@@ -1288,6 +1355,8 @@ document.getElementById('importInput').addEventListener('change', async e=>{
 ;(async ()=>{
   renderAppMeta()
   await loadAll()
+  reindexShotNumbers()
+  await saveAll()
   renderAll()
 })()
 </script>
