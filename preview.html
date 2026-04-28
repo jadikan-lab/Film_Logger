@@ -148,6 +148,32 @@ body{
 .tab.active{color:var(--blue);border-bottom-color:var(--blue)}
 .tab:hover:not(.active){background:rgba(40,94,168,.06);color:#44546e}
 
+#workflowRail{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;
+  padding:10px 12px 12px;background:linear-gradient(180deg,rgba(255,253,248,.92) 0%, rgba(246,242,234,.86) 100%);
+  border-bottom:1px solid rgba(214,216,207,.95);
+}
+.workflow-step{
+  border:1px solid #d9dfd4;border-radius:14px;padding:10px 10px 9px;
+  background:rgba(255,255,255,.72);box-shadow:var(--shadow-sm);
+  display:flex;flex-direction:column;gap:4px;min-width:0;
+  transition:transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.workflow-step-kicker{font-size:0.64rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#7a8392}
+.workflow-step-title{font-size:0.83rem;font-weight:800;color:#26304b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.workflow-step-copy{font-size:0.73rem;line-height:1.3;color:#667284}
+.workflow-step.active{
+  transform:translateY(-1px);
+  border-color:#9ab4d8;
+  background:linear-gradient(180deg,#f7fbff 0%, #edf4fc 100%);
+  box-shadow:0 12px 24px rgba(40,94,168,.12);
+}
+.workflow-step.active .workflow-step-kicker,.workflow-step.active .workflow-step-title{color:var(--blue)}
+.workflow-step.active.capture{border-color:#98bcda;background:linear-gradient(180deg,#f6fbff 0%, #e9f3fb 100%)}
+.workflow-step.active.continue{border-color:#c7b289;background:linear-gradient(180deg,#fffaf0 0%, #f8edd3 100%)}
+.workflow-step.active.archive{border-color:#9dc5ad;background:linear-gradient(180deg,#f8fcf9 0%, #ecf6ef 100%)}
+.workflow-step.active.settings{border-color:#c9bdd8;background:linear-gradient(180deg,#fbf8ff 0%, #f2edf8 100%)}
+
 /* filter button active */
 .filter-active{background:var(--blue)!important;color:#fff!important;border-color:var(--blue)!important}
 /* stop-mode segmented toggle */
@@ -519,6 +545,29 @@ body{
   <button class="tab" data-tab="panelSettings">
     <span class="tab-icon">⚙️</span><span class="tab-lbl">Réglages</span>
   </button>
+</div>
+
+<div id="workflowRail" aria-label="Repère de flux">
+  <div class="workflow-step active capture" data-flow-step="capture">
+    <div class="workflow-step-kicker">Étape 1</div>
+    <div class="workflow-step-title">Préparer</div>
+    <div class="workflow-step-copy">Créer une pellicule, un plan-film ou un papier à suivre.</div>
+  </div>
+  <div class="workflow-step" data-flow-step="continue">
+    <div class="workflow-step-kicker">Étape 2</div>
+    <div class="workflow-step-title">Continuer</div>
+    <div class="workflow-step-copy">Reprendre un support déjà entamé avec un contexte plus lisible.</div>
+  </div>
+  <div class="workflow-step" data-flow-step="archive">
+    <div class="workflow-step-kicker">Étape 3</div>
+    <div class="workflow-step-title">Archiver</div>
+    <div class="workflow-step-copy">Retrouver ce qui est terminé, rangé ou à republier.</div>
+  </div>
+  <div class="workflow-step" data-flow-step="settings">
+    <div class="workflow-step-kicker">Base</div>
+    <div class="workflow-step-title">Réglages</div>
+    <div class="workflow-step-copy">Ajuster pratiques, appareils, catalogues et repères de travail.</div>
+  </div>
 </div>
 
 <!-- Panel Pellicule -->
@@ -2926,9 +2975,30 @@ function settingsAddItem(inputId, getter, setter, lsKey, renderFn){
 }
 
 // ── Tabs ──────────────────────────────────────────────
+const FLOW_STEP_BY_TAB = {
+  panelRoll:'capture',
+  panelSheetPaper:'capture',
+  panelContinue:'continue',
+  panelSessions:'archive',
+  panelSettings:'settings',
+}
+
+function updateWorkflowRail(tabId){
+  const flowStep = FLOW_STEP_BY_TAB[tabId] || 'capture'
+  document.querySelectorAll('#workflowRail .workflow-step').forEach(step=>{
+    const active = step.dataset.flowStep === flowStep
+    step.classList.toggle('active', active)
+    step.classList.toggle('capture', active && flowStep === 'capture')
+    step.classList.toggle('continue', active && flowStep === 'continue')
+    step.classList.toggle('archive', active && flowStep === 'archive')
+    step.classList.toggle('settings', active && flowStep === 'settings')
+  })
+}
+
 function switchTab(tabId){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tabId))
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===tabId))
+  updateWorkflowRail(tabId)
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   switchTab(t.dataset.tab)
@@ -2936,6 +3006,7 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   if(t.dataset.tab==='panelSessions') renderArchivePanel()
   if(t.dataset.tab==='panelSheetPaper') renderSpPanel()
 }))
+updateWorkflowRail('panelRoll')
 
 // Practice checkboxes
 PRACTICE_KEYS.forEach(k=>{
