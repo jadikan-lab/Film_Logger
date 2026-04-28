@@ -2453,6 +2453,7 @@ updateSettingsSummaries()
 renderSpPanel()
 renderShutterSelect()
 renderApertureSelect()
+queueMicrotask(applyInitialTabRoute)
 
 bindById('stopMode_full',  'click', ()=>setStopMode('full'))
 bindById('stopMode_half',  'click', ()=>setStopMode('half'))
@@ -2810,6 +2811,35 @@ function updateSettingsSummaries(){
 
 const LS_SETTINGS_OPEN_SECTION = 'settings_open_section_v1'
 
+function isValidTabId(tabId){
+  return ['panelRoll','panelSheetPaper','panelContinue','panelSessions','panelSettings'].includes(tabId)
+}
+
+function getTabRouteFromHash(){
+  const raw = (location.hash||'').replace(/^#/,'').trim()
+  if(!raw) return { tabId:null, settingsSection:null }
+  const [tabId, settingsSection] = raw.split(':')
+  return {
+    tabId: isValidTabId(tabId) ? tabId : null,
+    settingsSection: settingsSection || null,
+  }
+}
+
+function getOpenSettingsSectionName(){
+  const openSection = document.querySelector('#panelSettings .settings-section[data-settings-section]:not(.collapsed)')
+  return openSection?.dataset.settingsSection || 'practices'
+}
+
+function syncTabRoute(tabId, settingsSection){
+  const nextHash = tabId === 'panelSettings'
+    ? `#${tabId}:${settingsSection || getOpenSettingsSectionName()}`
+    : `#${tabId}`
+
+  if(location.hash !== nextHash){
+    history.replaceState(null, '', nextHash)
+  }
+}
+
 function setSettingsSection(sectionName){
   const sections = document.querySelectorAll('#panelSettings .settings-section[data-settings-section]')
   sections.forEach(sec=>{
@@ -2819,6 +2849,8 @@ function setSettingsSection(sectionName){
     if(btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false')
   })
   try{ localStorage.setItem(LS_SETTINGS_OPEN_SECTION, sectionName) }catch{}
+  const settingsTab = document.querySelector('.tab.active[data-tab="panelSettings"]')
+  if(settingsTab) syncTabRoute('panelSettings', sectionName)
 }
 
 function initSettingsAccordion(){
@@ -2849,16 +2881,45 @@ function settingsAddItem(inputId, getter, setter, lsKey, renderFn){
 }
 
 // ── Tabs ──────────────────────────────────────────────
-function switchTab(tabId){
+function runTabSideEffects(tabId, settingsSection){
+  if(tabId==='panelSettings'){
+    renderSettingsPanel()
+    renderPracticesCheckboxes()
+    setSettingsSection(settingsSection || 'practices')
+  }
+  if(tabId==='panelSessions') renderArchivePanel()
+  if(tabId==='panelSheetPaper') renderSpPanel()
+}
+
+function switchTab(tabId, options = {}){
+  if(!isValidTabId(tabId)) return
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tabId))
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===tabId))
+  runTabSideEffects(tabId, options.settingsSection)
+  if(!options.skipHash) syncTabRoute(tabId, options.settingsSection)
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
-  switchTab(t.dataset.tab)
-  if(t.dataset.tab==='panelSettings'){ renderSettingsPanel(); renderPracticesCheckboxes(); setSettingsSection('practices') }
-  if(t.dataset.tab==='panelSessions') renderArchivePanel()
-  if(t.dataset.tab==='panelSheetPaper') renderSpPanel()
+  switchTab(t.dataset.tab, { settingsSection:'practices' })
 }))
+
+function applyInitialTabRoute(){
+  const route = getTabRouteFromHash()
+  if(!route.tabId) return
+  switchTab(route.tabId, {
+    skipHash:true,
+    settingsSection: route.settingsSection || 'practices',
+  })
+  syncTabRoute(route.tabId, route.settingsSection || 'practices')
+}
+
+window.addEventListener('hashchange', ()=>{
+  const route = getTabRouteFromHash()
+  if(!route.tabId) return
+  switchTab(route.tabId, {
+    skipHash:true,
+    settingsSection: route.settingsSection || 'practices',
+  })
+})
 
 // Practice checkboxes
 PRACTICE_KEYS.forEach(k=>{
