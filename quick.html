@@ -723,6 +723,30 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
         <button id="captureShotLocationBtn" class="geo-btn" type="button">📍 Position de cette vue</button>
         <div id="shotLocationStatus" class="geo-status">Aucune position préparée pour cette vue</div>
       </div>
+      <div class="field" style="margin-top:10px">
+        <label>Contexte lumineux (vue)</label>
+        <div class="capture-card">
+          <div class="capture-head">
+            <button id="shotCaptureContextBtn" class="geo-btn" type="button">📸 + 📍 Capturer contexte</button>
+            <input id="shotCapturePhotoInput" type="file" accept="image/*" capture="environment" style="display:none" />
+          </div>
+          <div class="capture-preview">
+            <img id="shotCapturePreview" class="capture-thumb" alt="Aperçu contexte vue" />
+            <div id="shotCaptureStatus" class="geo-status">Aucun contexte capturé</div>
+          </div>
+          <div class="capture-lux-row">
+            <input id="shotLux" type="number" min="1" max="200000" inputmode="numeric" placeholder="Lux (optionnel)" />
+            <span class="capture-note">Lumière mesurée</span>
+          </div>
+          <div class="capture-presets">
+            <button class="capture-preset shot-capture-preset" type="button" data-lux="5">Nuit (5)</button>
+            <button class="capture-preset shot-capture-preset" type="button" data-lux="100">Intérieur (100)</button>
+            <button class="capture-preset shot-capture-preset" type="button" data-lux="1000">Ombre (1000)</button>
+            <button class="capture-preset shot-capture-preset" type="button" data-lux="100000">Soleil (100k)</button>
+          </div>
+          <div id="shotMeterHint" class="capture-meter">Astuce: renseigne un lux pour obtenir une suggestion vitesse selon l'ISO de la pellicule et l'ouverture.</div>
+        </div>
+      </div>
       <div class="entry-actions compact-actions" style="margin-top:12px">
         <button id="saveShotBtn" class="btn-xs">Enregistrer vue</button>
         <button id="moveToFridgeBtn" class="btn-xs">Frigo</button>
@@ -1212,6 +1236,123 @@ function renderSpCaptureStatus(){
   status.className = 'geo-status' + (parts.length ? ' ok' : '')
   status.textContent = parts.length ? parts.join(' · ') : 'Aucun contexte capturé'
 }
+
+function analyzeImageBrightness(dataURL){
+  return new Promise(resolve=>{
+    if(!dataURL){ resolve(null); return }
+    const img = new Image()
+    img.onload = ()=>{
+      try{
+        const maxSide = 320
+        let w = img.naturalWidth || img.width
+        let h = img.naturalHeight || img.height
+        if(!w || !h){ resolve(null); return }
+        if(Math.max(w, h) > maxSide){
+          const ratio = maxSide / Math.max(w, h)
+          w = Math.max(1, Math.round(w * ratio))
+          h = Math.max(1, Math.round(h * ratio))
+        }
+        const c = document.createElement('canvas')
+        c.width = w
+        c.height = h
+        const ctx = c.getContext('2d', { willReadFrequently: true })
+        if(!ctx){ resolve(null); return }
+        ctx.drawImage(img, 0, 0, w, h)
+        const data = ctx.getImageData(0, 0, w, h).data
+        const zones = [0,0,0,0,0]
+        let sum = 0
+        let min = 255
+        let max = 0
+        const pixelCount = Math.max(1, data.length / 4)
+        for(let i=0; i<data.length; i+=4){
+          const r = data[i], g = data[i+1], b = data[i+2]
+          const y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+          sum += y
+          if(y < min) min = y
+          if(y > max) max = y
+          const zone = Math.min(4, Math.floor(y / 51.2))
+          zones[zone]++
+        }
+        resolve({
+          avg: Math.round(sum / pixelCount),
+          min: Math.round(min),
+          max: Math.round(max),
+          zonesPct: zones.map(v=>Number(((v / pixelCount) * 100).toFixed(1)))
+        })
+      }catch(_){
+        resolve(null)
+      }
+    }
+    img.onerror = ()=>resolve(null)
+    img.src = dataURL
+  })
+}
+
+function formatBrightnessStats(stats){
+  if(!stats || !Array.isArray(stats.zonesPct)) return ''
+  return `Luma ~${stats.avg}/255 · Min/Max ${stats.min}/${stats.max} · Zones ${stats.zonesPct.join('/')}`
+}
+
+function getLatestShotCapture(entry){
+  const logs = (entry?.shotsLog || []).slice().reverse()
+  return logs.find(log=>{
+    const capture = log?.locationCapture
+    return !!capture && (capture.photoDataURL || capture.lux || capture.imageStats)
+  })?.locationCapture || null
+}
+
+function renderShotCaptureStatus(entry){
+  const status = document.getElementById('shotCaptureStatus')
+  const preview = document.getElementById('shotCapturePreview')
+  if(!status || !preview) return
+  const latestCapture = getLatestShotCapture(entry)
+  const photoSrc = pendingShotCapturePhoto || latestCapture?.photoDataURL || ''
+  if(photoSrc){
+    preview.src = photoSrc
+    preview.classList.add('show')
+  } else {
+    preview.removeAttribute('src')
+    preview.classList.remove('show')
+  }
+  const lux = Number(document.getElementById('shotLux')?.value)
+  const parts = []
+  if(pendingShotCapturePhoto) parts.push('Photo prête')
+  if(pendingShotLocation) parts.push(`Position prête (${formatLocationSummary(pendingShotLocation)})`)
+  if(Number.isFinite(lux) && lux > 0) parts.push(`${Math.round(lux)} lux`)
+  if(pendingShotCaptureStats) parts.push('Analyse image prête')
+  if(parts.length){
+    status.className = 'geo-status ok'
+    status.textContent = parts.join(' · ')
+    return
+  }
+  if(latestCapture){
+    const latest = []
+    if(latestCapture.lux) latest.push(`${latestCapture.lux} lux`)
+    if(latestCapture.photoDataURL) latest.push('photo')
+    if(latestCapture.imageStats) latest.push('analyse 5 zones')
+    status.className = 'geo-status ok'
+    status.textContent = `Dernier contexte enregistré${latest.length ? ` · ${latest.join(' · ')}` : ''}`
+    return
+  }
+  status.className = 'geo-status'
+  status.textContent = 'Aucun contexte capturé'
+}
+
+function renderShotMeterHint(entry){
+  const target = document.getElementById('shotMeterHint')
+  if(!target) return
+  const lux = Number(document.getElementById('shotLux')?.value)
+  const iso = Number(entry?.ratedIso)
+  const aperture = parseApertureValue(document.getElementById('shotAperture')?.value)
+  const computed = computeExposureHintFromLux(lux, iso, aperture)
+  const brightnessPart = pendingShotCaptureStats ? ` · ${formatBrightnessStats(pendingShotCaptureStats)}` : ''
+  if(!computed){
+    target.textContent = `Astuce: renseigne un lux pour obtenir une suggestion vitesse selon l'ISO de la pellicule et l'ouverture.${brightnessPart}`
+    return
+  }
+  const shutterTxt = formatSuggestedShutter(computed.shutterSec)
+  target.textContent = `EV100 ≈ ${computed.ev100.toFixed(1)} · Vitesse suggérée ≈ ${shutterTxt || 'n/a'}${brightnessPart}`
+}
 const EXPIRY_YEARS = (()=>{
   const y=new Date().getFullYear(), arr=['—']
   for(let i=y-30; i<=2030; i++) arr.push(String(i))
@@ -1274,6 +1415,8 @@ let archiveFolderNames = {}
 let archiveView = 'archive'
 let pendingRollLocation = null
 let pendingShotLocation = null
+let pendingShotCapturePhoto = ''
+let pendingShotCaptureStats = null
 let pendingSpLocation = null
 let pendingSpCapturePhoto = ''
 let continueMap = null
@@ -2353,6 +2496,16 @@ function renderContinueShots(entry){
         <span>${new Date(log.createdAt).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})} ${new Date(log.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span>
       </div>
       <div class="shot-log-meta">${[log.cameraName, log.shutterSpeed, log.aperture, log.lightConditions, log.lens].filter(Boolean).join(' · ')}</div>
+      ${(() => {
+        const capture = log.locationCapture
+        if(!capture) return ''
+        const bits = []
+        if(capture.lux) bits.push(`${capture.lux} lux`)
+        if(capture.suggestedShutter) bits.push(`vitesse suggérée ${capture.suggestedShutter}`)
+        if(capture.photoDataURL) bits.push('photo contexte')
+        if(capture.imageStats) bits.push(formatBrightnessStats(capture.imageStats))
+        return bits.length ? `<div class="shot-log-meta">Contexte: ${bits.join(' · ')}</div>` : ''
+      })()}
       ${log.notes?`<div class="shot-log-notes">${log.notes}</div>`:''}
     </div>`).join('')
 }
@@ -2625,6 +2778,8 @@ function renderList(){
   }
   renderContinueShots(entry)
   renderShotLocationStatus(entry)
+  renderShotCaptureStatus(entry)
+  renderShotMeterHint(entry)
   renderContinueMap(entry)
   updateShotLensDatalist(entry.cameraName)
 }
@@ -2756,6 +2911,10 @@ function bindById(id, event, handler){
 bindById('continueSelect', 'change', ev=>{
   selectedContinueId = ev.target.value || null
   pendingShotLocation = null
+  pendingShotCapturePhoto = ''
+  pendingShotCaptureStats = null
+  const shotLux = document.getElementById('shotLux')
+  if(shotLux) shotLux.value = ''
   continueMapOpen = false
   renderList()
 })
@@ -2791,6 +2950,60 @@ bindById('captureShotLocationBtn', 'click', async()=>{
   } finally {
     if(btn) btn.textContent = '📍 Position de cette vue'
   }
+})
+
+bindById('shotCaptureContextBtn', 'click', async()=>{
+  const btn = document.getElementById('shotCaptureContextBtn')
+  const input = document.getElementById('shotCapturePhotoInput')
+  if(btn) btn.textContent = '⏳ Capture…'
+  if(input) input.click()
+  try{
+    pendingShotLocation = await requestCurrentLocation()
+  }catch(err){
+    toast(geolocationErrorMessage(err))
+  } finally {
+    if(btn) btn.textContent = '📸 + 📍 Capturer contexte'
+    const entry = getSelectedContinueEntry()
+    renderShotLocationStatus(entry)
+    renderShotCaptureStatus(entry)
+  }
+})
+
+bindById('shotCapturePhotoInput', 'change', async ev=>{
+  const files = ev.target.files || []
+  const file = files[0]
+  if(!file) return
+  try{
+    pendingShotCapturePhoto = await compressFile(file, 1280, 0.78)
+    pendingShotCaptureStats = await analyzeImageBrightness(pendingShotCapturePhoto)
+    const entry = getSelectedContinueEntry()
+    renderShotCaptureStatus(entry)
+    renderShotMeterHint(entry)
+    toast('Photo contexte prête ✓')
+  }catch(_){
+    toast('Impossible de traiter la photo')
+  } finally {
+    ev.target.value = ''
+  }
+})
+
+bindById('shotLux', 'input', ()=>{
+  const entry = getSelectedContinueEntry()
+  renderShotCaptureStatus(entry)
+  renderShotMeterHint(entry)
+})
+
+bindById('shotAperture', 'change', ()=>renderShotMeterHint(getSelectedContinueEntry()))
+
+document.querySelectorAll('#panelContinue .shot-capture-preset').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const val = btn.getAttribute('data-lux') || ''
+    const input = document.getElementById('shotLux')
+    if(input) input.value = val
+    const entry = getSelectedContinueEntry()
+    renderShotCaptureStatus(entry)
+    renderShotMeterHint(entry)
+  })
 })
 
 bindById('spCaptureContextBtn', 'click', async()=>{
@@ -2955,6 +3168,7 @@ document.getElementById('saveShotBtn').addEventListener('click', async()=>{
     return
   }
   const cameraName = document.getElementById('continueCameraSelect').value.trim()
+  const lux = Number(document.getElementById('shotLux').value)
   const shot = {
     id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
     createdAt: Date.now(),
@@ -2966,6 +3180,19 @@ document.getElementById('saveShotBtn').addEventListener('click', async()=>{
     lens: document.getElementById('shotLens').value.trim(),
     location: pendingShotLocation ? cloneLocation(pendingShotLocation) : null,
     notes: document.getElementById('shotNotes').value.trim()
+  }
+  if(pendingShotCapturePhoto || (Number.isFinite(lux) && lux > 0) || pendingShotCaptureStats){
+    const apertureNum = parseApertureValue(shot.aperture)
+    const exposure = computeExposureHintFromLux(lux, Number(allEntries[index].ratedIso), apertureNum)
+    shot.locationCapture = {
+      photoDataURL: pendingShotCapturePhoto || null,
+      lux: Number.isFinite(lux) && lux > 0 ? Math.round(lux) : null,
+      source: Number.isFinite(lux) && lux > 0 ? 'manual' : 'none',
+      ev100: exposure ? Number(exposure.ev100.toFixed(2)) : null,
+      suggestedShutter: exposure ? formatSuggestedShutter(exposure.shutterSec) : null,
+      imageStats: pendingShotCaptureStats || null,
+      capturedAt: shot.createdAt
+    }
   }
   allEntries[index].cameraName = cameraName
   allEntries[index].shotsTaken = nextFrame
@@ -2981,9 +3208,14 @@ document.getElementById('saveShotBtn').addEventListener('click', async()=>{
   document.getElementById('shotLight').value = ''
   document.getElementById('shotLens').value = ''
   document.getElementById('shotNotes').value = ''
+  document.getElementById('shotLux').value = ''
   toast('Vue enregistree')
   pendingShotLocation = null
+  pendingShotCapturePhoto = ''
+  pendingShotCaptureStats = null
   renderShotLocationStatus(allEntries[index])
+  renderShotCaptureStatus(allEntries[index])
+  renderShotMeterHint(allEntries[index])
   renderContinueMap(allEntries[index])
 })
 
