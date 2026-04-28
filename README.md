@@ -34,6 +34,8 @@ Pour la version publiée, la référence reste `quick.html`.
 
 La methode de travail du repo est decrite dans `WORKFLOW.md`.
 
+Le protocole d'audit metier pour la revue photographe est dans `AUDIT_PHOTOGRAPHE.md`.
+
 Resume rapide :
 
 - `quick.html` = base fonctionnelle stable
