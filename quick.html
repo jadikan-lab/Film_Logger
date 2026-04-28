@@ -585,6 +585,14 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
     <input id="spRatedIso" type="number" min="1" max="12800" placeholder="Ex: 400" />
   </div>
   <div class="field">
+    <label>Ouverture utilisée</label>
+    <input id="spAperture" type="text" placeholder="Ex: f/8" />
+  </div>
+  <div class="field">
+    <label>Objectif utilisé</label>
+    <input id="spLens" type="text" list="lensPoolDatalist" placeholder="Ex: 150mm" />
+  </div>
+  <div class="field">
     <label>Mode de prise</label>
     <div style="font-size:0.86rem;color:#556170;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fafbfd">
       Une entrée = une feuille (plan-film ou papier). Pas de compteur nécessaire.
@@ -2123,7 +2131,14 @@ function entrySubtitle(e){
     return parts.join(' · ')
   }
   if(e.entryType==='sheet'){
-    const parts = [e.stockName||'', e.cameraName||'', e.sheetCount!=null?`${e.sheetsExposed||0}/${e.sheetCount} plans`:'' ].filter(Boolean)
+    const parts = [e.stockName||'', e.cameraName||'', e.aperture||'', e.lens||'' ].filter(Boolean)
+    if(e.sheetCount!=null && e.sheetCount>1) parts.push(`${e.sheetsExposed||0}/${e.sheetCount} plans`)
+    if(expiry) parts.push(`exp. ${expiry}`)
+    if(e.ratedIso) parts.push(`ISO ${e.ratedIso}`)
+    return parts.join(' · ')
+  }
+  if(e.entryType==='paper'){
+    const parts = [e.stockName||'', e.aperture||'', e.lens||'' ].filter(Boolean)
     if(expiry) parts.push(`exp. ${expiry}`)
     if(e.ratedIso) parts.push(`ISO ${e.ratedIso}`)
     return parts.join(' · ')
@@ -2898,6 +2913,8 @@ bindById('saveBtnSP', 'click', async()=>{
   const sheetsExposed = 0
   const expiryYear = document.getElementById('spExpiryYear').value.trim()
   const ratedIso = Number(document.getElementById('spRatedIso').value)
+  const aperture = document.getElementById('spAperture').value.trim()
+  const lens = document.getElementById('spLens').value.trim()
   if(!stockName){ toast('Renseigne le stock'); return }
   if(supportType==='sheet' && !cameraName){ toast('Renseigne l appareil'); return }
   if(expiryYear && !/^\d{4}$/.test(expiryYear)){ toast('Annee de peremption invalide'); return }
@@ -2910,7 +2927,7 @@ bindById('saveBtnSP', 'click', async()=>{
     notes:document.getElementById('spNotes').value, finalPhotoDataURL:null,
     entryType:supportType, materialType,
     supportStatus:'finished', finishedAt:now,
-    stockName, filmFormat, cameraName, sheetCount, sheetsExposed, shotsLog:[]
+    stockName, filmFormat, cameraName, sheetCount, sheetsExposed, aperture, lens, shotsLog:[]
   }
   if(expiryYear) entry.expiresYear = expiryYear
   if(ratedIso) entry.ratedIso = ratedIso
@@ -2923,8 +2940,8 @@ bindById('saveBtnSP', 'click', async()=>{
   document.getElementById('spNotes').value=''
   document.getElementById('spExpiryYear').value=''
   document.getElementById('spRatedIso').value=''
-  document.getElementById('spSheetCount').value='1'
-  document.getElementById('spSheetsExposed').value='0'
+  document.getElementById('spAperture').value=''
+  document.getElementById('spLens').value=''
   toast(supportType==='paper' ? 'Papier enregistre ✓' : 'Plan-film enregistre ✓')
 })
 
