@@ -22,7 +22,26 @@ Application web single-file pour journaliser ses prises de vue en argentique.
 
 ## Utilisation
 
-Ouvrir `film-logger.html` dans un navigateur. Aucune dépendance à installer, aucun serveur requis.
+Entrées disponibles :
+
+- `quick.html` : base fonctionnelle de référence, à conserver complète et stable.
+- `preview.html` : terrain de redesign, prévu pour tester une nouvelle interface sans perdre les fonctions existantes.
+- `film-logger.html` : prototype single-file plus simple, utile comme piste visuelle mais pas comme source de vérité fonctionnelle.
+
+Pour la version publiée, la référence reste `quick.html`.
+
+## Workflow
+
+La methode de travail du repo est decrite dans `WORKFLOW.md`.
+
+Le protocole d'audit metier pour la revue photographe est dans `AUDIT_PHOTOGRAPHE.md`.
+
+Resume rapide :
+
+- `quick.html` = base fonctionnelle stable
+- `preview.html` = preview design
+- `main` = stable publiee
+- `feature/`, `fix/`, `design/`, `chore/`, `backup/` = conventions de branches
 
 ## Stack
 
