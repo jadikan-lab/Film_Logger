@@ -67,6 +67,16 @@ body{
   padding:8px 12px;text-align:center;font-size:0.76rem;font-weight:700;
   letter-spacing:.04em;text-transform:uppercase
 }
+#workspaceChips{
+  display:flex;gap:8px;flex-wrap:wrap;padding:10px 12px 0;background:transparent
+}
+.workspace-chip{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;
+  background:rgba(255,253,248,.86);border:1px solid rgba(28,34,56,.08);color:#4f5b70;
+  font-size:0.74rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  box-shadow:var(--shadow-sm)
+}
+.workspace-chip strong{color:#24324a;font-weight:800}
 #authDot{width:10px;height:10px;border-radius:50%;background:#7a879b;flex-shrink:0;box-shadow:0 0 0 4px rgba(255,255,255,.08)}
 #authDot.ok{background:#4caf50}
 #gearBtn{
@@ -138,6 +148,32 @@ body{
 .tab.active{color:var(--blue);border-bottom-color:var(--blue)}
 .tab:hover:not(.active){background:rgba(40,94,168,.06);color:#44546e}
 
+#workflowRail{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;
+  padding:10px 12px 12px;background:linear-gradient(180deg,rgba(255,253,248,.92) 0%, rgba(246,242,234,.86) 100%);
+  border-bottom:1px solid rgba(214,216,207,.95);
+}
+.workflow-step{
+  border:1px solid #d9dfd4;border-radius:14px;padding:10px 10px 9px;
+  background:rgba(255,255,255,.72);box-shadow:var(--shadow-sm);
+  display:flex;flex-direction:column;gap:4px;min-width:0;
+  transition:transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.workflow-step-kicker{font-size:0.64rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#7a8392}
+.workflow-step-title{font-size:0.83rem;font-weight:800;color:#26304b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.workflow-step-copy{font-size:0.73rem;line-height:1.3;color:#667284}
+.workflow-step.active{
+  transform:translateY(-1px);
+  border-color:#9ab4d8;
+  background:linear-gradient(180deg,#f7fbff 0%, #edf4fc 100%);
+  box-shadow:0 12px 24px rgba(40,94,168,.12);
+}
+.workflow-step.active .workflow-step-kicker,.workflow-step.active .workflow-step-title{color:var(--blue)}
+.workflow-step.active.capture{border-color:#98bcda;background:linear-gradient(180deg,#f6fbff 0%, #e9f3fb 100%)}
+.workflow-step.active.continue{border-color:#c7b289;background:linear-gradient(180deg,#fffaf0 0%, #f8edd3 100%)}
+.workflow-step.active.archive{border-color:#9dc5ad;background:linear-gradient(180deg,#f8fcf9 0%, #ecf6ef 100%)}
+.workflow-step.active.settings{border-color:#c9bdd8;background:linear-gradient(180deg,#fbf8ff 0%, #f2edf8 100%)}
+
 /* filter button active */
 .filter-active{background:var(--blue)!important;color:#fff!important;border-color:var(--blue)!important}
 /* stop-mode segmented toggle */
@@ -157,6 +193,25 @@ body{
 #panelContinue{padding:12px;gap:10px}
 #panelSessions{padding:12px;gap:10px}
 #panelSettings{padding:14px;gap:16px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+.panel-intro{
+  background:linear-gradient(135deg,rgba(255,253,248,.96) 0%, rgba(246,242,234,.96) 100%);
+  border:1px solid var(--border);border-radius:20px;padding:14px 16px;box-shadow:var(--shadow-sm)
+}
+.panel-intro .eyebrow{
+  font-size:0.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--blue)
+}
+.panel-intro h2{
+  margin-top:4px;font-family:Georgia,"Times New Roman",serif;font-size:1.2rem;line-height:1.1;color:#1c2238
+}
+.panel-intro p{
+  margin-top:6px;font-size:0.86rem;line-height:1.45;color:#5d687a
+}
+.panel-intro .mini-stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.panel-intro .mini-stats span{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;
+  background:#fff;border:1px solid rgba(40,94,168,.12);font-size:0.76rem;font-weight:700;color:#50607a
+}
 
 /* ── Settings ── */
 .settings-section{background:var(--paper);border-radius:18px;border:1px solid var(--border);overflow:hidden;box-shadow:var(--shadow-sm)}
@@ -249,6 +304,8 @@ body{
   background:var(--card);border:1.5px solid var(--border);
   border-radius:18px;padding:12px;flex-shrink:0;box-shadow:var(--shadow-sm);
 }
+.entry-card.soft-blue{background:linear-gradient(180deg,#f7faff 0%, #eef4fb 100%);border-color:#ccd9ea}
+.entry-card.soft-green{background:linear-gradient(180deg,#f7fbf8 0%, #eef7f1 100%);border-color:#cfe3d7}
 .entry-card.fridge{border-color:#c8d7ff;background:#f7faff}
 .entry-card.finished{border-color:#b2dfdb;background:#f5fbf8}
 .entry-head{display:flex;gap:10px}
@@ -397,6 +454,11 @@ body{
 <body>
 
 <div id="previewBanner">Preview redesign · mêmes données que quick.html</div>
+<div id="workspaceChips">
+  <span class="workspace-chip">Source <strong>quick.html</strong></span>
+  <span class="workspace-chip">Mode <strong>design</strong></span>
+  <span class="workspace-chip">Branche <strong>design/preview-redesign</strong></span>
+</div>
 
 <!-- Header -->
 <div id="header">
@@ -485,9 +547,42 @@ body{
   </button>
 </div>
 
+<div id="workflowRail" aria-label="Repère de flux">
+  <div class="workflow-step active capture" data-flow-step="capture">
+    <div class="workflow-step-kicker">Étape 1</div>
+    <div class="workflow-step-title">Préparer</div>
+    <div class="workflow-step-copy">Créer une pellicule, un plan-film ou un papier à suivre.</div>
+  </div>
+  <div class="workflow-step" data-flow-step="continue">
+    <div class="workflow-step-kicker">Étape 2</div>
+    <div class="workflow-step-title">Continuer</div>
+    <div class="workflow-step-copy">Reprendre un support déjà entamé avec un contexte plus lisible.</div>
+  </div>
+  <div class="workflow-step" data-flow-step="archive">
+    <div class="workflow-step-kicker">Étape 3</div>
+    <div class="workflow-step-title">Archiver</div>
+    <div class="workflow-step-copy">Retrouver ce qui est terminé, rangé ou à republier.</div>
+  </div>
+  <div class="workflow-step" data-flow-step="settings">
+    <div class="workflow-step-kicker">Base</div>
+    <div class="workflow-step-title">Réglages</div>
+    <div class="workflow-step-copy">Ajuster pratiques, appareils, catalogues et repères de travail.</div>
+  </div>
+</div>
+
 <!-- Panel Pellicule -->
 <input type="hidden" id="supportType" value="roll">
 <div id="panelRoll" class="panel active">
+  <div class="panel-intro">
+    <div class="eyebrow">Pellicule</div>
+    <h2>Préparer un support avec une lecture plus claire.</h2>
+    <p>Cette vue reste fonctionnelle comme dans quick.html, mais sert à tester une hiérarchie visuelle plus éditoriale et plus lisible sur mobile.</p>
+    <div class="mini-stats">
+      <span>Référence stable</span>
+      <span>Design only</span>
+      <span>Parité à préserver</span>
+    </div>
+  </div>
   <div class="field">
     <label>Format</label>
     <select id="filmFormat"></select>
@@ -535,6 +630,11 @@ body{
 
 <!-- Panel Plan-film / Papier -->
 <div id="panelSheetPaper" class="panel">
+  <div class="panel-intro">
+    <div class="eyebrow">Plan-film / Papier</div>
+    <h2>Deux techniques, un même langage visuel.</h2>
+    <p>La preview doit mieux distinguer les techniques sans changer les réglages disponibles ni la logique déjà en place.</p>
+  </div>
   <div class="stop-seg-row" style="padding:10px 0 4px">
     <span class="stop-seg-label">Technique</span>
     <div class="stop-seg">
@@ -585,9 +685,10 @@ body{
 
 <!-- Panel Continue -->
 <div id="panelContinue" class="panel">
-  <div style="padding:8px 0 6px">
-    <div style="font-size:0.92rem;font-weight:700;color:#333">Pellicules en cours</div>
-    <div style="font-size:0.82rem;color:#666;margin-top:4px">Ici, on ne reprend que les pellicules deja entamees. Tout ce qui est termine se range dans l'onglet Archives.</div>
+  <div class="panel-intro">
+    <div class="eyebrow">Continuer</div>
+    <h2>Reprendre une pellicule avec plus de contexte.</h2>
+    <p>Ici, on ne reprend que les pellicules déjà entamées. Tout ce qui est terminé se range dans l’onglet Archives.</p>
   </div>
   <div class="field">
     <label>Choisir une pellicule</label>
@@ -609,7 +710,7 @@ body{
   <div id="continueWorkspace" style="display:none;gap:12px;flex-direction:column">
     <div id="continueCurrentFrame" class="current-frame-indicator"></div>
     <div id="continueSummary" class="entry-card"></div>
-    <div class="entry-card">
+    <div class="entry-card soft-blue">
       <div class="field">
         <label>Boîtier actuellement utilisé</label>
         <div class="inline-row">
@@ -671,9 +772,10 @@ body{
 
 <!-- Panel Sessions -->
 <div id="panelSessions" class="panel">
-  <div style="padding:8px 0 6px">
-    <div style="font-size:0.92rem;font-weight:700;color:#333">Archives par jour</div>
-    <div style="font-size:0.82rem;color:#666;margin-top:4px">Pellicules, plan-films et papiers termines sont ranges dans des dossiers par date. Tu peux renommer chaque dossier.</div>
+  <div class="panel-intro">
+    <div class="eyebrow">Archives</div>
+    <h2>Retrouver les dossiers terminés sans perdre la chronologie.</h2>
+    <p>Pellicules, plans-films et papiers terminés sont rangés dans des dossiers par date. Tu peux renommer chaque dossier sans toucher aux données internes.</p>
   </div>
   <div class="filter-row">
     <button class="btn-out filter-btn active" id="archiveViewArchive" type="button">Archives</button>
@@ -685,7 +787,7 @@ body{
   </div>
   <div id="archiveEmpty" class="empty" style="display:none"></div>
   <div id="archiveWorkspace" style="display:none;gap:12px;flex-direction:column">
-    <div class="entry-card">
+    <div class="entry-card soft-green">
       <div class="field">
         <label>Nom du dossier</label>
         <div class="inline-row">
@@ -704,9 +806,10 @@ body{
 
 <!-- Panel Settings -->
 <div id="panelSettings" class="panel">
-  <div style="padding:4px 0 2px">
-    <div style="font-size:0.92rem;font-weight:700;color:#333">Paramètres</div>
-    <div style="font-size:0.82rem;color:#666;margin-top:4px">Les réglages sont enregistrés automatiquement.</div>
+  <div class="panel-intro">
+    <div class="eyebrow">Réglages</div>
+    <h2>Le cockpit fonctionnel de Film Logger.</h2>
+    <p>Les réglages sont enregistrés automatiquement. Cette zone est prioritaire pour la future parité fonctionnelle entre quick.html et la preview.</p>
   </div>
 
   <!-- Pratiques -->
@@ -2872,9 +2975,30 @@ function settingsAddItem(inputId, getter, setter, lsKey, renderFn){
 }
 
 // ── Tabs ──────────────────────────────────────────────
+const FLOW_STEP_BY_TAB = {
+  panelRoll:'capture',
+  panelSheetPaper:'capture',
+  panelContinue:'continue',
+  panelSessions:'archive',
+  panelSettings:'settings',
+}
+
+function updateWorkflowRail(tabId){
+  const flowStep = FLOW_STEP_BY_TAB[tabId] || 'capture'
+  document.querySelectorAll('#workflowRail .workflow-step').forEach(step=>{
+    const active = step.dataset.flowStep === flowStep
+    step.classList.toggle('active', active)
+    step.classList.toggle('capture', active && flowStep === 'capture')
+    step.classList.toggle('continue', active && flowStep === 'continue')
+    step.classList.toggle('archive', active && flowStep === 'archive')
+    step.classList.toggle('settings', active && flowStep === 'settings')
+  })
+}
+
 function switchTab(tabId){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tabId))
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===tabId))
+  updateWorkflowRail(tabId)
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   switchTab(t.dataset.tab)
@@ -2882,6 +3006,7 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   if(t.dataset.tab==='panelSessions') renderArchivePanel()
   if(t.dataset.tab==='panelSheetPaper') renderSpPanel()
 }))
+updateWorkflowRail('panelRoll')
 
 // Practice checkboxes
 PRACTICE_KEYS.forEach(k=>{
