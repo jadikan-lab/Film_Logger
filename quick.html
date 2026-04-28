@@ -145,8 +145,8 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
   cursor:pointer;min-height:50px;
 }
 .settings-section-head:active{background:#eef3fb}
-.settings-head-title{flex:1}
-.settings-head-summary{font-size:0.78rem;color:#6a7688;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48%}
+.settings-head-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.settings-head-summary{font-size:0.75rem;color:#6a7688;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42%}
 .settings-head-chevron{font-size:0.9rem;color:#6a7688;transition:transform .2s ease}
 .settings-section.collapsed .settings-head-chevron{transform:rotate(-90deg)}
 .settings-section-body{display:block;overflow-y:auto;max-height:420px;overscroll-behavior:contain}
@@ -200,6 +200,8 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
 .map-summary-chips{display:flex;flex-wrap:wrap;gap:6px}
 .map-summary-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;background:#f0eadc;border:1px solid rgba(64,90,132,.12);font-size:0.7rem;font-weight:700;color:#5b6476}
 .mini-map{height:220px;border-radius:12px;overflow:hidden;border:1px solid rgba(64,90,132,.14)}
+.map-toggle-row{display:flex;justify-content:flex-end;margin-top:6px}
+.map-toggle-btn{padding:6px 10px;border-radius:8px;border:1px solid rgba(64,90,132,.2);background:#f5f8ff;color:var(--blue);font-size:0.76rem;font-weight:700;cursor:pointer}
 .settings-list li{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid #f0f0f0;font-size:0.92rem;min-height:46px}
 .settings-list li:last-child{border-bottom:none}
 .settings-list li span{flex:1;color:#333}
@@ -284,11 +286,13 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
 .status-badge.finished{color:var(--green)}
 .status-badge.trash{color:var(--red)}
 .entry-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.entry-actions.compact-actions{flex-wrap:nowrap;overflow-x:auto;gap:4px;padding-bottom:2px}
 .btn-xs{
   border-radius:8px;padding:9px 12px;cursor:pointer;
   font-size:0.85rem;font-weight:600;border:1.5px solid var(--border);
   background:#fff;color:#333;
 }
+.entry-actions.compact-actions .btn-xs{padding:7px 8px;font-size:0.74rem;white-space:nowrap;line-height:1.15}
 .btn-xs.danger{color:var(--red);border-color:var(--red)}
 .btn-xs:active{filter:brightness(.9)}
 .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 2px}
@@ -581,12 +585,10 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
     <input id="spRatedIso" type="number" min="1" max="12800" placeholder="Ex: 400" />
   </div>
   <div class="field">
-    <label id="spSheetCountLabel">Quantité de plans-films</label>
-    <input id="spSheetCount" type="number" min="1" max="99" value="1" />
-  </div>
-  <div class="field">
-    <label id="spSheetsExposedLabel">Plans déjà exposés</label>
-    <input id="spSheetsExposed" type="number" min="0" max="99" value="0" />
+    <label>Mode de prise</label>
+    <div style="font-size:0.86rem;color:#556170;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fafbfd">
+      Une entrée = une feuille (plan-film ou papier). Pas de compteur nécessaire.
+    </div>
   </div>
   <div class="field">
     <label>Notes</label>
@@ -633,7 +635,10 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
           <div id="rollLocationStatus" class="geo-status">Aucune position enregistrée</div>
         </div>
       </div>
-      <div id="continueMapCard" class="map-card">
+      <div class="map-toggle-row" id="continueMapToggleRow" style="display:none">
+        <button id="continueMapToggleBtn" class="map-toggle-btn" type="button">Afficher la carte</button>
+      </div>
+      <div id="continueMapCard" class="map-card" style="display:none">
         <div id="continueMapSummary" class="map-summary-chips"></div>
         <div id="continueMap" class="mini-map"></div>
       </div>
@@ -674,9 +679,9 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
         <button id="captureShotLocationBtn" class="geo-btn" type="button">📍 Position de cette vue</button>
         <div id="shotLocationStatus" class="geo-status">Aucune position préparée pour cette vue</div>
       </div>
-      <div class="entry-actions" style="margin-top:12px">
-        <button id="saveShotBtn" class="btn-xs">Enregistrer cette vue</button>
-        <button id="moveToFridgeBtn" class="btn-xs">Mettre au frigo</button>
+      <div class="entry-actions compact-actions" style="margin-top:12px">
+        <button id="saveShotBtn" class="btn-xs">Enregistrer vue</button>
+        <button id="moveToFridgeBtn" class="btn-xs">Frigo</button>
         <button id="finishRollBtn" class="btn-xs">Terminer la pellicule</button>
         <button id="continueDeleteBtn" class="btn-xs danger">Corbeille</button>
         <button id="continueDeleteEverywhereBtn" class="btn-xs danger">Suppr partout</button>
@@ -735,8 +740,8 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
   </div>
 
   <!-- Pratiques -->
-  <div class="settings-section" data-settings-section="practices">
-    <button class="settings-section-head" data-settings-toggle="practices" aria-expanded="true" type="button">
+  <div class="settings-section collapsed" data-settings-section="practices">
+    <button class="settings-section-head" data-settings-toggle="practices" aria-expanded="false" type="button">
       <span class="settings-head-title">🎯 Que pratiques-tu ?</span>
       <span id="settingsSummaryPractices" class="settings-head-summary"></span>
       <span class="settings-head-chevron">▾</span>
@@ -1165,6 +1170,7 @@ let pendingRollLocation = null
 let pendingShotLocation = null
 let continueMap = null
 let continueMapLayer = null
+let continueMapOpen = false
 // practices + SP sub-type state
 let userPractices = {}
 let spSubType = 'sheet' // 'sheet' | 'paper'
@@ -1488,14 +1494,10 @@ function renderSpCameraSelect(){
 
 function renderSpPanel(){
   const label = document.getElementById('spStockLabel')
-  const cntLabel = document.getElementById('spSheetCountLabel')
-  const expLabel = document.getElementById('spSheetsExposedLabel')
   const cameraField = document.getElementById('spCameraField')
   const saveBtn = document.getElementById('saveBtnSP')
 
   if(label) label.textContent = spSubType==='paper' ? 'Type de papier' : 'Type de plan-film'
-  if(cntLabel) cntLabel.textContent = spSubType==='paper' ? 'Quantité de feuilles papier' : 'Quantité de plans-films'
-  if(expLabel) expLabel.textContent = spSubType==='paper' ? 'Feuilles déjà exposées' : 'Plans déjà exposés'
   if(cameraField) cameraField.style.display = spSubType==='paper' ? 'none' : 'flex'
   if(saveBtn) saveBtn.textContent = spSubType==='paper' ? '💾 Enregistrer le papier' : '💾 Enregistrer le plan-film'
 
@@ -2248,9 +2250,23 @@ function renderContinueMap(entry){
   const card = document.getElementById('continueMapCard')
   const summary = document.getElementById('continueMapSummary')
   const mapEl = document.getElementById('continueMap')
-  if(!card || !summary || !mapEl) return
+  const toggleRow = document.getElementById('continueMapToggleRow')
+  const toggleBtn = document.getElementById('continueMapToggleBtn')
+  if(!card || !summary || !mapEl || !toggleRow || !toggleBtn) return
   const points = buildContinueMapPoints(entry)
-  if(!points.length){ card.style.display='none'; summary.innerHTML=''; return }
+  if(!points.length){
+    toggleRow.style.display = 'none'
+    card.style.display='none'
+    summary.innerHTML=''
+    continueMapOpen = false
+    return
+  }
+  toggleRow.style.display = 'flex'
+  toggleBtn.textContent = continueMapOpen ? 'Masquer la carte' : 'Afficher la carte'
+  if(!continueMapOpen){
+    card.style.display = 'none'
+    return
+  }
   card.style.display = 'flex'
   const shotPoints = points.filter(p=>p.type==='shot')
   const distinctPlaces = new Set(points.map(p=>`${p.location.lat.toFixed(3)}:${p.location.lng.toFixed(3)}`)).size
@@ -2387,6 +2403,7 @@ function renderArchivePanel(){
     card.className = 'shot-log'
     card.innerHTML = `<div class="shot-log-head"><span>${archiveEntryTypeLabel(e)} · ${e.stockName||''}</span><span>${doneLabel}</span></div><div class="shot-log-meta">${e.filmFormat||''} · ${progress}${e.cameraName?` · ${e.cameraName}`:''}</div>${archiveView==='trash' ? `<div class="status-badge trash">Suppression définitive dans ${trashDaysRemaining(e)} j</div>` : ''}${e.notes?`<div class="shot-log-notes">${e.notes}</div>`:''}<div class="entry-actions"></div>`
     const actions = card.querySelector('.entry-actions')
+    actions.classList.add('compact-actions')
     const mk = (label, fn, danger)=>{ const b=document.createElement('button'); b.className='btn-xs'+(danger?' danger':''); b.textContent=label; b.onclick=fn; return b }
     if(archiveView==='trash'){
       actions.appendChild(mk('♻ Restaurer', async()=>{
@@ -2403,9 +2420,9 @@ function renderArchivePanel(){
         await saveAndSync(allEntries.filter(x=>x.id!==e.id))
       }, true))
     } else {
-      actions.appendChild(mk('✏️ Modifier', ()=>openEditModal(e.id)))
-      if(e.myDriveFinal&&e.myDriveFinal.webViewLink) actions.appendChild(mk('🔗 Drive', ()=>window.open(e.myDriveFinal.webViewLink, '_blank')))
-      actions.appendChild(mk('🗑 Corbeille', async()=>{
+      actions.appendChild(mk('Modifier', ()=>openEditModal(e.id)))
+      if(e.myDriveFinal&&e.myDriveFinal.webViewLink) actions.appendChild(mk('Drive', ()=>window.open(e.myDriveFinal.webViewLink, '_blank')))
+      actions.appendChild(mk('Corbeille', async()=>{
         if(!confirm('Envoyer cette entrée dans la corbeille ?')) return
         const i = allEntries.findIndex(x=>x.id===e.id)
         if(i===-1) return
@@ -2413,7 +2430,7 @@ function renderArchivePanel(){
         allEntries[i].updatedAt = Date.now()
         await saveAndSync(allEntries)
       }, true))
-      actions.appendChild(mk('☁🗑 Suppr partout', async()=>{
+      actions.appendChild(mk('Suppr partout', async()=>{
         if(!confirm('Supprimer cette entrée dans l\'app et supprimer ses fichiers Drive ?')) return
         const i = allEntries.findIndex(x=>x.id===e.id)
         if(i===-1) return
@@ -2608,10 +2625,15 @@ function bindById(id, event, handler){
 bindById('continueSelect', 'change', ev=>{
   selectedContinueId = ev.target.value || null
   pendingShotLocation = null
+  continueMapOpen = false
   renderList()
 })
 bindById('continueCameraSelect', 'change', ev=>{
   updateShotLensDatalist(ev.target.value)
+})
+bindById('continueMapToggleBtn', 'click', ()=>{
+  continueMapOpen = !continueMapOpen
+  renderContinueMap(getSelectedContinueEntry())
 })
 
 bindById('captureRollLocationBtn', 'click', async()=>{
@@ -2788,6 +2810,7 @@ document.getElementById('saveShotBtn').addEventListener('click', async()=>{
   toast('Vue enregistree')
   pendingShotLocation = null
   renderShotLocationStatus(allEntries[index])
+  renderContinueMap(allEntries[index])
 })
 
 document.getElementById('moveToFridgeBtn').addEventListener('click', async()=>{
@@ -2871,14 +2894,12 @@ bindById('saveBtnSP', 'click', async()=>{
   const stockName = document.getElementById('spStock').value.trim()
   const filmFormat = document.getElementById('spFormat').value
   const cameraName = supportType==='paper' ? '' : document.getElementById('spCamera').value.trim()
-  const sheetCount = Number(document.getElementById('spSheetCount').value)
-  const sheetsExposed = Number(document.getElementById('spSheetsExposed').value)
+  const sheetCount = 1
+  const sheetsExposed = 0
   const expiryYear = document.getElementById('spExpiryYear').value.trim()
   const ratedIso = Number(document.getElementById('spRatedIso').value)
   if(!stockName){ toast('Renseigne le stock'); return }
   if(supportType==='sheet' && !cameraName){ toast('Renseigne l appareil'); return }
-  if(!sheetCount || sheetCount<1){ toast(supportType==='paper' ? 'Quantite de feuilles invalide' : 'Quantite de plans-films invalide'); return }
-  if(sheetsExposed<0 || sheetsExposed>sheetCount){ toast('Nombre deja exposes invalide'); return }
   if(expiryYear && !/^\d{4}$/.test(expiryYear)){ toast('Annee de peremption invalide'); return }
 
   const materialType = supportType==='paper' ? 'paper' : 'film'
@@ -3249,27 +3270,40 @@ function updateSettingsSummaries(){
   if(spp) spp.textContent = `${(paperStocks||[]).length} sélectionné(s)`
 }
 
-const LS_SETTINGS_OPEN_SECTION = 'settings_open_section_v1'
+const LS_SETTINGS_COLLAPSED_SECTIONS = 'settings_collapsed_sections_v1'
 
-function setSettingsSection(sectionName){
+function writeCollapsedSettingsSections(){
   const sections = document.querySelectorAll('#panelSettings .settings-section[data-settings-section]')
-  sections.forEach(sec=>{
-    const open = sec.dataset.settingsSection === sectionName
-    sec.classList.toggle('collapsed', !open)
-    const btn = sec.querySelector('.settings-section-head')
-    if(btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false')
-  })
-  try{ localStorage.setItem(LS_SETTINGS_OPEN_SECTION, sectionName) }catch{}
+  const collapsed = []
+  sections.forEach(sec=>{ if(sec.classList.contains('collapsed')) collapsed.push(sec.dataset.settingsSection) })
+  try{ localStorage.setItem(LS_SETTINGS_COLLAPSED_SECTIONS, JSON.stringify(collapsed)) }catch{}
+}
+
+function toggleSettingsSection(sectionName){
+  const sec = document.querySelector(`#panelSettings .settings-section[data-settings-section="${sectionName}"]`)
+  if(!sec) return
+  const nowCollapsed = !sec.classList.contains('collapsed')
+  sec.classList.toggle('collapsed', nowCollapsed)
+  const btn = sec.querySelector('.settings-section-head')
+  if(btn) btn.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true')
+  writeCollapsedSettingsSections()
 }
 
 function initSettingsAccordion(){
   document.querySelectorAll('#panelSettings [data-settings-toggle]').forEach(btn=>{
-    btn.addEventListener('click', ()=>setSettingsSection(btn.dataset.settingsToggle))
+    btn.addEventListener('click', ()=>toggleSettingsSection(btn.dataset.settingsToggle))
   })
-  // restore last open section
   try{
-    const saved = localStorage.getItem(LS_SETTINGS_OPEN_SECTION)
-    if(saved) setSettingsSection(saved)
+    const savedRaw = localStorage.getItem(LS_SETTINGS_COLLAPSED_SECTIONS)
+    const collapsed = savedRaw ? JSON.parse(savedRaw) : null
+    if(Array.isArray(collapsed)){
+      document.querySelectorAll('#panelSettings .settings-section[data-settings-section]').forEach(sec=>{
+        const shouldCollapse = collapsed.includes(sec.dataset.settingsSection)
+        sec.classList.toggle('collapsed', shouldCollapse)
+        const btn = sec.querySelector('.settings-section-head')
+        if(btn) btn.setAttribute('aria-expanded', shouldCollapse ? 'false' : 'true')
+      })
+    }
   }catch{}
 }
 
