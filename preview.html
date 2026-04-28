@@ -1,0 +1,2980 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="robots" content="noindex">
+<title>Film Logger Preview v0.1</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+<script>
+// Callback officiel Google GSI — déclenché dès que le SDK est prêt
+window.onGoogleLibraryLoad = function(){
+  if(typeof initGoogleAuth === 'function') initGoogleAuth()
+}
+</script>
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script>
+// Cleanup for legacy PWA cache so users get the latest published app.
+;(async () => {
+  if (!('serviceWorker' in navigator)) return
+  const scopeMarker = '/Film_Logger/'
+  const cachePrefixes = ['solargraph-', 'film-logger-']
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations()
+    const targetRegs = regs.filter((reg) => reg.scope.includes(scopeMarker))
+    await Promise.all(targetRegs.map((reg) => reg.unregister()))
+    if ('caches' in window) {
+      const keys = await caches.keys()
+      const targetKeys = keys.filter((key) => cachePrefixes.some((prefix) => key.startsWith(prefix)))
+      await Promise.all(targetKeys.map((key) => caches.delete(key)))
+    }
+  } catch (_) {}
+})()
+</script>
+<style>
+:root{
+  --blue:#0366d6;--green:#28a745;--red:#dc3545;--dark:#1a1a2e;
+  --bg:#f0f2f5;--card:#fff;--border:#e2e6ea;
+  --radius:12px;--tab-h:56px;--header-h:72px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);display:flex;flex-direction:column;height:100dvh}
+
+/* ── Header ── */
+#header{
+  background:var(--dark);color:#fff;
+  height:var(--header-h);padding:0 12px;
+  display:flex;align-items:center;gap:8px;flex-shrink:0;
+}
+#header .titleWrap{display:flex;flex-direction:column;flex:1;min-width:0}
+#header h1{font-size:1rem;font-weight:700;letter-spacing:.01em;line-height:1.15}
+#headerMeta{font-size:0.66rem;color:#cbd2d9;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#previewBanner{
+  background:#fbe6a6;color:#5a4406;border-bottom:1px solid #e2b53b;
+  padding:8px 12px;text-align:center;font-size:0.76rem;font-weight:700;
+  letter-spacing:.04em;text-transform:uppercase
+}
+#authDot{width:10px;height:10px;border-radius:50%;background:#555;flex-shrink:0}
+#authDot.ok{background:#4caf50}
+#gearBtn{
+  background:none;border:none;color:#fff;font-size:1.5rem;
+  cursor:pointer;padding:6px;border-radius:8px;line-height:1;
+}
+#gearBtn:active{background:rgba(255,255,255,.15)}
+
+/* ── Settings drawer ── */
+#drawerOverlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;
+  display:none;opacity:0;transition:opacity .25s;
+}
+#drawerOverlay.open{display:block;opacity:1}
+#drawer{
+  position:fixed;top:0;right:-320px;width:300px;max-width:90vw;height:100%;
+  background:#fff;z-index:101;padding:0;
+  transition:right .25s ease;display:flex;flex-direction:column;
+  box-shadow:-4px 0 20px rgba(0,0,0,.25);
+}
+#drawer.open{right:0}
+#drawerHead{
+  background:var(--dark);color:#fff;padding:16px;
+  display:flex;align-items:center;gap:8px;
+}
+#drawerHead h2{font-size:1rem;flex:1}
+#drawerClose{background:none;border:none;color:#fff;font-size:1.4rem;cursor:pointer;padding:4px}
+#drawerBody{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.d-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.d-label{font-size:0.8rem;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.04em;flex:1}
+.d-status{font-size:0.82rem;color:#555}
+.d-btn{
+  width:100%;padding:13px 12px;border:none;border-radius:var(--radius);
+  font-size:0.95rem;font-weight:700;cursor:pointer;text-align:center;
+}
+.d-btn.primary{background:var(--blue);color:#fff}
+.d-btn.success{background:var(--green);color:#fff}
+.d-btn.danger{background:var(--red);color:#fff}
+.d-btn.outline{background:#fff;color:#333;border:1.5px solid var(--border)}
+.d-btn:active{filter:brightness(.9)}
+.toggle-row{display:flex;align-items:center;gap:10px;padding:4px 0}
+.toggle-row label{flex:1;font-size:0.95rem}
+.toggle{position:relative;width:46px;height:26px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:#ccc;border-radius:13px;transition:.2s}
+.slider:before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+.slider{background:var(--green)}
+.toggle input:checked+.slider:before{transform:translateX(20px)}
+#pubProgress{width:100%;height:8px;border-radius:4px;display:none}
+#pubStatus{font-size:0.8rem;color:#555;text-align:center;min-height:18px}
+
+/* ── Tabs ── */
+#tabs{
+  display:flex;background:#fff;
+  border-bottom:2px solid var(--border);flex-shrink:0;
+  box-shadow:0 1px 4px rgba(0,0,0,.06);
+}
+.tab{
+  flex:1;height:var(--tab-h);border:none;background:none;cursor:pointer;
+  font-size:0.95rem;color:#777;
+  border-bottom:3px solid transparent;margin-bottom:-2px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+}
+.tab .tab-icon{font-size:1.25rem;line-height:1}
+.tab .tab-lbl{font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+
+/* filter button active */
+.filter-active{background:var(--blue)!important;color:#fff!important;border-color:var(--blue)!important}
+/* stop-mode segmented toggle */
+.stop-seg-row{display:flex;align-items:center;gap:10px;margin:8px 0 4px}
+.stop-seg-label{font-size:0.72rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
+.stop-seg{display:flex;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;background:#f5f5f5}
+.stop-btn{flex:1;padding:5px 11px;border:none;background:none;font-size:0.88rem;color:#666;cursor:pointer;transition:background .15s,color .15s;min-width:32px;line-height:1.4}
+.stop-btn.active{background:var(--blue);color:#fff}
+.stop-btn:not(.active):hover{background:#e8f0fe;color:var(--blue)}
+
+/* ── Panels ── */
+.panel{display:none;flex:1;overflow-y:auto;flex-direction:column;min-height:0;overscroll-behavior:contain}
+.panel.active{display:flex}
+#panelForm{padding:14px;gap:12px}
+#panelRoll{padding:14px;gap:12px}
+#panelSheetPaper{padding:14px;gap:12px}
+#panelContinue{padding:12px;gap:10px}
+#panelSessions{padding:12px;gap:10px}
+#panelSettings{padding:14px;gap:16px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* ── Settings ── */
+.settings-section{background:#fff;border-radius:var(--radius);border:1px solid var(--border);overflow:hidden}
+.settings-section-head{
+  width:100%;padding:12px 14px;background:#f8f9fb;border:none;border-bottom:1px solid var(--border);
+  font-weight:700;font-size:0.92rem;color:#333;display:flex;align-items:center;gap:8px;text-align:left;
+  cursor:pointer;min-height:50px;
+}
+.settings-section-head:active{background:#eef3fb}
+.settings-head-title{flex:1}
+.settings-head-summary{font-size:0.78rem;color:#6a7688;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48%}
+.settings-head-chevron{font-size:0.9rem;color:#6a7688;transition:transform .2s ease}
+.settings-section.collapsed .settings-head-chevron{transform:rotate(-90deg)}
+.settings-section-body{display:block;overflow-y:auto;max-height:420px;overscroll-behavior:contain}
+.settings-section.collapsed .settings-section-body{display:none}
+.settings-search-row{padding:10px 14px;border-bottom:1px solid #f0f0f0;background:#fff;position:sticky;top:0;z-index:2}
+.settings-search-row input{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;outline:none}
+.settings-search-row input:focus{border-color:var(--blue)}
+.settings-list{list-style:none;margin:0;padding:0}
+.voir-plus-btn{display:block;width:100%;padding:9px 14px;background:none;border:none;border-top:1px solid #f0f0f0;color:var(--blue);font-size:0.85rem;cursor:pointer;text-align:center;font-weight:600}
+.voir-plus-btn:hover{background:#f0f6ff}
+.camera-fmt-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.fmt-tag{padding:2px 7px;border-radius:12px;font-size:0.72rem;font-weight:700;cursor:pointer;border:1.5px solid #c8d5e8;background:#f5f8fc;color:#4a6080;line-height:1.6;transition:background .15s,color .15s}
+.fmt-tag.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.camera-formats-add{display:flex;flex-wrap:wrap;gap:6px;padding:6px 0}
+.camera-formats-add label{display:flex;align-items:center;gap:4px;font-size:0.82rem;color:#444;cursor:pointer}
+.camera-formats-add input[type=checkbox]{width:15px;height:15px;accent-color:var(--blue)}
+.camera-item-name{flex:1;font-size:0.92rem;color:#222;font-weight:600}
+.camera-item-fmt{flex:1}
+.settings-list li{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid #f0f0f0;font-size:0.92rem;min-height:46px}
+.settings-list li:last-child{border-bottom:none}
+.settings-list li span{flex:1;color:#333}
+.settings-list li label{display:flex;align-items:center;gap:10px;width:100%;cursor:pointer;color:#333}
+.settings-list li input[type="checkbox"]{width:18px;height:18px;accent-color:var(--blue)}
+.settings-list li .btn-del{background:none;border:1px solid #e0e0e0;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.8rem;color:#c0392b;line-height:1.6}
+.settings-list li .btn-del:hover{background:#ffeaea;border-color:#c0392b}
+.settings-list li.settings-group{background:#fbfcff;color:#516179;font-size:0.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;min-height:38px}
+.settings-add-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:#fafafa}
+.settings-add-row input{flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;outline:none}
+.settings-add-row input:focus{border-color:var(--blue)}
+.settings-add-row button{padding:7px 14px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;white-space:nowrap}
+.settings-add-row button:hover{opacity:.88}
+#panelMap{padding:0}
+#map{flex:1;min-height:0;height:100%}
+
+/* ── Form ── */
+.btn-photo{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  background:#fff;color:var(--blue);border:2.5px dashed var(--blue);
+  border-radius:var(--radius);padding:18px;font-size:1.05rem;
+  cursor:pointer;width:100%;font-weight:700;min-height:64px;
+}
+.btn-photo:active{background:#e8f0fe}
+.btn-save{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--green);color:#fff;border:none;
+  border-radius:var(--radius);padding:18px;font-size:1.1rem;
+  font-weight:700;cursor:pointer;width:100%;min-height:64px;
+}
+.btn-save:active{filter:brightness(.9)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:0.78rem;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.04em}
+.field select,.field textarea,.field input{
+  width:100%;padding:13px 12px;
+  border:1.5px solid var(--border);border-radius:var(--radius);
+  font-size:1rem;background:#fff;
+  -webkit-appearance:none;appearance:none;
+}
+.field select:focus,.field textarea:focus,.field input:focus{outline:none;border-color:var(--blue)}
+.field textarea{resize:vertical;min-height:72px}
+.inline-row{display:flex;gap:8px;align-items:center}
+.inline-row select,.inline-row input{flex:1}
+.btn-mini{
+  border:1.5px solid var(--border);background:#fff;color:#333;
+  border-radius:10px;padding:10px 12px;cursor:pointer;font-weight:700;
+  min-width:44px;
+}
+.btn-mini:active{filter:brightness(.95)}
+#photosPreview{display:flex;flex-wrap:wrap;gap:8px}
+.photo-thumb{position:relative}
+.photo-thumb img{width:88px;height:88px;object-fit:cover;border-radius:10px;display:block}
+.photo-thumb .del{
+  position:absolute;top:4px;right:4px;
+  background:rgba(0,0,0,.7);color:#fff;border:none;
+  border-radius:50%;width:24px;height:24px;
+  cursor:pointer;font-size:0.85rem;line-height:24px;text-align:center;padding:0;
+}
+/* ── List ── */
+.entry-card{
+  background:var(--card);border:1.5px solid var(--border);
+  border-radius:var(--radius);padding:12px;flex-shrink:0;
+}
+.entry-card.fridge{border-color:#c8d7ff;background:#f5f8ff}
+.entry-card.finished{border-color:#b2dfdb;background:#f0faf8}
+.entry-head{display:flex;gap:10px}
+.entry-thumb img{
+  width:80px;height:80px;object-fit:cover;border-radius:10px;display:block;
+}
+.entry-info{flex:1;min-width:0}
+.entry-date{font-weight:700;font-size:0.95rem}
+.entry-chip{
+  display:inline-block;background:#e8f0fe;color:var(--blue);
+  border-radius:6px;padding:2px 7px;font-size:0.78rem;font-weight:700;
+  margin-right:4px;margin-top:4px;
+}
+.entry-chip.green{background:#e8f5e9;color:var(--green)}
+.entry-meta{font-size:0.82rem;color:#666;margin-top:3px}
+.entry-notes{font-size:0.82rem;color:#333;margin-top:5px;font-style:italic}
+.status-badge{font-size:0.82rem;margin-top:4px;font-weight:700}
+.status-badge.fridge{color:var(--blue)}
+.status-badge.finished{color:var(--green)}
+.status-badge.trash{color:var(--red)}
+.entry-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.btn-xs{
+  border-radius:8px;padding:9px 12px;cursor:pointer;
+  font-size:0.85rem;font-weight:600;border:1.5px solid var(--border);
+  background:#fff;color:#333;
+}
+.btn-xs.danger{color:var(--red);border-color:var(--red)}
+.btn-xs:active{filter:brightness(.9)}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 2px}
+.filter-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+#storageBar{font-size:0.75rem;color:#999;text-align:center;flex-shrink:0;padding:4px 0}
+#exportRow{
+  display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;
+  padding:10px 0 4px;border-top:1px solid var(--border);
+}
+.btn-out{
+  flex:1;padding:11px;border:1.5px solid var(--border);border-radius:10px;
+  background:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;text-align:center;
+}
+.btn-danger-sm{
+  flex:1;padding:11px;border:none;border-radius:10px;
+  background:var(--red);color:#fff;cursor:pointer;
+  font-size:0.85rem;font-weight:600;
+}
+.current-frame-indicator{
+  border:2px solid var(--blue);
+  background:linear-gradient(135deg,#eaf3ff,#f7fbff);
+  border-radius:14px;
+  padding:12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.current-frame-label{
+  font-size:0.78rem;
+  font-weight:800;
+  color:var(--blue);
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.current-frame-value{
+  font-size:2rem;
+  line-height:1;
+  font-weight:900;
+  color:#0b4fa3;
+}
+.current-frame-sub{
+  font-size:0.82rem;
+  color:#4b5f7a;
+  margin-top:4px;
+}
+.shot-log{
+  background:#fff;border:1.5px solid var(--border);border-radius:12px;
+  padding:10px 12px;margin-bottom:8px;
+}
+.shot-log-head{display:flex;justify-content:space-between;gap:8px;font-weight:700;font-size:0.9rem}
+.shot-log-meta{font-size:0.82rem;color:#666;margin-top:4px}
+.shot-log-notes{font-size:0.82rem;color:#333;margin-top:5px;font-style:italic}
+.empty{text-align:center;color:#bbb;padding:40px 20px;font-size:0.95rem}
+
+/* ── Toast ── */
+#toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);
+  background:#333;color:#fff;padding:12px 20px;border-radius:var(--radius);
+  font-size:0.9rem;z-index:200;opacity:0;transition:transform .25s,opacity .25s;
+  max-width:90vw;text-align:center;pointer-events:none;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── Edit modal (bottom sheet) ── */
+#editOverlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;
+  display:none;
+}
+#editOverlay.open{display:block}
+#editSheet{
+  position:fixed;left:0;right:0;bottom:-100%;
+  max-height:92dvh;background:#fff;z-index:301;
+  border-radius:18px 18px 0 0;
+  display:flex;flex-direction:column;
+  transition:bottom .3s ease;
+  box-shadow:0 -4px 24px rgba(0,0,0,.18);
+}
+#editSheet.open{bottom:0}
+#editSheetHead{
+  background:var(--dark);color:#fff;padding:16px;
+  display:flex;align-items:center;gap:8px;
+  border-radius:18px 18px 0 0;flex-shrink:0;
+}
+#editSheetHead h2{font-size:1rem;flex:1}
+#editSheetClose{background:none;border:none;color:#fff;font-size:1.4rem;cursor:pointer;padding:4px;line-height:1}
+#editSheetBody{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+#editPhotosPreview{display:flex;flex-wrap:wrap;gap:8px}
+.btn-save-edit{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--blue);color:#fff;border:none;
+  border-radius:var(--radius);padding:16px;font-size:1.05rem;
+  font-weight:700;cursor:pointer;width:100%;min-height:56px;flex-shrink:0;
+  margin-top:4px;
+}
+.btn-save-edit:active{filter:brightness(.9)}
+
+/* ── Map markers ── */
+.map-pin{
+  width:28px;height:28px;border-radius:50%;border:3px solid #fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
+}
+.map-pin.active{background:#27ae60} /* green = still in place */
+.map-pin.retrieved{background:#e67e22} /* legacy */
+
+/* map legend */
+#mapLegend{
+  position:absolute;top:10px;right:10px;z-index:520;background:rgba(255,255,255,0.95);
+  padding:8px 10px;border-radius:10px;border:1px solid var(--border);font-size:0.85rem;color:#333;
+  box-shadow:0 2px 8px rgba(0,0,0,.12);
+}
+.mapLegendItem{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.mapLegendSwatch{width:14px;height:14px;border-radius:50%;display:inline-block;margin-right:6px}
+
+/* ensure legend positioned relative to panel */
+#panelMap{position:relative;display:none!important}
+
+</style>
+</head>
+<body>
+
+<div id="previewBanner">Preview redesign · mêmes données que quick.html</div>
+
+<!-- Header -->
+<div id="header">
+  <div class="titleWrap">
+    <h1>Film Logger</h1>
+    <div id="headerMeta">v0.1 • mise a jour: --</div>
+  </div>
+  <div id="authDot" title="Déconnecté"></div>
+  <button id="gearBtn" title="Paramètres">⚙️</button>
+</div>
+
+<script>
+(() => {
+  const APP_VERSION = '0.1'
+  const parsedDate = new Date(document.lastModified)
+  const updatedAt = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate
+  const updatedStr = updatedAt.toLocaleString('fr-FR', {
+    day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'
+  })
+  document.title = `Film Logger Preview v${APP_VERSION}`
+  const meta = document.getElementById('headerMeta')
+  if(meta) meta.textContent = `preview v${APP_VERSION} • mise a jour: ${updatedStr}`
+})()
+</script>
+
+<!-- Settings drawer -->
+<div id="drawerOverlay"></div>
+<div id="drawer">
+  <div id="drawerHead">
+    <h2>⚙️ Paramètres Drive</h2>
+    <button id="drawerClose">✕</button>
+  </div>
+  <div id="drawerBody">
+    <div class="d-row">
+      <span class="d-label">Compte</span>
+      <span id="authStatus" class="d-status">Déconnecté</span>
+    </div>
+    <button id="authBtn" class="d-btn primary">Connexion Google</button>
+    <button id="switchAccountBtn" class="d-btn outline">🔁 Changer de compte Google</button>
+
+    <hr style="border:none;border-top:1px solid #eee">
+
+    <div class="d-row">
+      <span class="d-label">Sync appData</span>
+      <span id="driveInfo" class="d-status">—</span>
+    </div>
+    <div class="d-row">
+      <span class="d-label">Corbeille</span>
+      <span id="trashInfo" class="d-status">0 entrée</span>
+    </div>
+    <button id="checkDriveBtn" class="d-btn outline">🔍 Vérifier Drive caché</button>
+
+    <hr style="border:none;border-top:1px solid #eee">
+
+    <div class="toggle-row">
+      <label for="autoPublishToggle">Auto-publish sur Mon Drive</label>
+      <label class="toggle">
+        <input type="checkbox" id="autoPublishToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <button id="publishBtn" class="d-btn success">📤 Publier sur Mon Drive</button>
+    <progress id="pubProgress" value="0" max="100"></progress>
+    <div id="pubStatus"></div>
+    <button id="cleanupDriveBtn" class="d-btn outline">🧹 Nettoyer les orphelins Drive</button>
+    <button id="resetDriveLinks" class="d-btn outline">🔄 Réinitialiser liens Drive</button>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div id="tabs">
+  <button class="tab active" data-tab="panelRoll">
+    <span class="tab-icon">🎞</span><span class="tab-lbl">Pellicule</span>
+  </button>
+  <button class="tab" data-tab="panelSheetPaper">
+    <span class="tab-icon">📄</span><span class="tab-lbl">Plan-film</span>
+  </button>
+  <button class="tab" data-tab="panelContinue">
+    <span class="tab-icon">⏯</span><span class="tab-lbl">Continuer</span>
+  </button>
+  <button class="tab" data-tab="panelSessions">
+    <span class="tab-icon">📁</span><span class="tab-lbl">Archives</span>
+  </button>
+  <button class="tab" data-tab="panelSettings">
+    <span class="tab-icon">⚙️</span><span class="tab-lbl">Réglages</span>
+  </button>
+</div>
+
+<!-- Panel Pellicule -->
+<input type="hidden" id="supportType" value="roll">
+<div id="panelRoll" class="panel active">
+  <div class="field">
+    <label>Format</label>
+    <select id="filmFormat"></select>
+  </div>
+  <div class="field">
+    <label>Type de pellicule</label>
+    <select id="stockNameSelect"></select>
+  </div>
+  <div class="field" id="cameraField">
+    <label>Appareil</label>
+    <div class="inline-row">
+      <select id="cameraSelect"></select>
+      <button id="addCameraBtnRoll" class="btn-mini" type="button" title="Ajouter un appareil">+</button>
+    </div>
+  </div>
+  <div class="field">
+    <label>Année de péremption (optionnel)</label>
+    <select id="expiryYear"></select>
+  </div>
+  <div class="field">
+    <label>ISO de travail</label>
+    <select id="ratedIso"></select>
+  </div>
+  <div class="field">
+    <label>Nombre de poses</label>
+    <input id="frameCount" type="number" min="1" max="99" value="36" />
+  </div>
+  <div class="field">
+    <label>Poses déjà prises</label>
+    <input id="shotsTaken" type="number" min="0" max="99" value="0" />
+  </div>
+  <div class="field">
+    <label>Notes</label>
+    <textarea id="notes" placeholder="Lieu, conditions, intention…"></textarea>
+  </div>
+  <div class="field">
+    <label>Où se trouve ce support ?</label>
+    <select id="supportLocation">
+      <option value="active">Déjà dans un appareil</option>
+      <option value="fridge">Frigo / stock</option>
+    </select>
+  </div>
+  <button class="btn-save" id="saveBtn">💾 Enregistrer la pellicule</button>
+</div>
+
+<!-- Panel Plan-film / Papier -->
+<div id="panelSheetPaper" class="panel">
+  <div class="stop-seg-row" style="padding:10px 0 4px">
+    <span class="stop-seg-label">Technique</span>
+    <div class="stop-seg">
+      <button id="spBtnSheet" class="stop-btn active" type="button">Plan-film</button>
+      <button id="spBtnPaper" class="stop-btn" type="button">Papier</button>
+    </div>
+  </div>
+  <div class="field">
+    <label>Format</label>
+    <select id="spFormat"></select>
+  </div>
+  <div class="field">
+    <label id="spStockLabel">Type de plan-film</label>
+    <div class="inline-row">
+      <select id="spStock"></select>
+      <button id="spAddStockBtn" class="btn-mini" type="button" title="Ajouter">+</button>
+    </div>
+  </div>
+  <div class="field" id="spCameraField">
+    <label>Appareil</label>
+    <div class="inline-row">
+      <select id="spCamera"></select>
+      <button id="addCameraBtnSP" class="btn-mini" type="button" title="Ajouter un appareil">+</button>
+    </div>
+  </div>
+  <div class="field">
+    <label>Année de péremption (optionnel)</label>
+    <input id="spExpiryYear" type="number" min="1900" max="2100" inputmode="numeric" placeholder="Ex: 2028" />
+  </div>
+  <div class="field">
+    <label>ISO de travail</label>
+    <input id="spRatedIso" type="number" min="1" max="12800" placeholder="Ex: 400" />
+  </div>
+  <div class="field">
+    <label id="spSheetCountLabel">Quantité de plans-films</label>
+    <input id="spSheetCount" type="number" min="1" max="99" value="1" />
+  </div>
+  <div class="field">
+    <label id="spSheetsExposedLabel">Plans déjà exposés</label>
+    <input id="spSheetsExposed" type="number" min="0" max="99" value="0" />
+  </div>
+  <div class="field">
+    <label>Notes</label>
+    <textarea id="spNotes" placeholder="Lieu, conditions, intention…"></textarea>
+  </div>
+  <button class="btn-save" id="saveBtnSP">💾 Enregistrer le plan-film</button>
+</div>
+
+<!-- Panel Continue -->
+<div id="panelContinue" class="panel">
+  <div style="padding:8px 0 6px">
+    <div style="font-size:0.92rem;font-weight:700;color:#333">Pellicules en cours</div>
+    <div style="font-size:0.82rem;color:#666;margin-top:4px">Ici, on ne reprend que les pellicules deja entamees. Tout ce qui est termine se range dans l'onglet Archives.</div>
+  </div>
+  <div class="field">
+    <label>Choisir une pellicule</label>
+    <select id="continueSelect"></select>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;padding:2px 0 6px">
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <label style="font-size:0.85rem;color:#666">Trier:</label>
+      <select id="sortSelect" style="padding:8px;border-radius:8px;border:1px solid var(--border)">
+        <option value="date_desc">Date (récent)</option>
+        <option value="date_asc">Date (ancien)</option>
+        <option value="progress_desc">Plus avancées</option>
+        <option value="progress_asc">Moins avancées</option>
+      </select>
+    </div>
+  </div>
+  <div id="storageBar"></div>
+  <div id="continueEmpty" class="empty" style="display:none"></div>
+  <div id="continueWorkspace" style="display:none;gap:12px;flex-direction:column">
+    <div id="continueCurrentFrame" class="current-frame-indicator"></div>
+    <div id="continueSummary" class="entry-card"></div>
+    <div class="entry-card">
+      <div class="field">
+        <label>Boîtier actuellement utilisé</label>
+        <div class="inline-row">
+          <select id="continueCameraSelect"></select>
+          <button id="addCameraBtnContinue" class="btn-mini" type="button" title="Ajouter un appareil">+</button>
+        </div>
+      </div>
+      <div class="stop-seg-row" style="margin-top:10px">
+        <span class="stop-seg-label">Stops</span>
+        <div class="stop-seg">
+          <button id="stopMode_full" class="stop-btn active" type="button">1</button>
+          <button id="stopMode_half" class="stop-btn" type="button">½</button>
+          <button id="stopMode_third" class="stop-btn" type="button">⅓</button>
+        </div>
+      </div>
+      <div class="field" style="margin-top:6px">
+        <label>Vitesse</label>
+        <select id="shotShutter"></select>
+      </div>
+      <div id="bulbRow" class="field" style="margin-top:6px;display:none">
+        <label>Durée Bulb (secondes)</label>
+        <input id="shotBulbSec" type="number" min="1" max="9999" placeholder="Ex: 120" />
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Ouverture</label>
+        <select id="shotAperture"></select>
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Conditions lumineuses</label>
+        <input id="shotLight" type="text" placeholder="Ex: soleil voilé, intérieur tungstène" />
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Objectif / focale</label>
+        <input id="shotLens" type="text" placeholder="Ex: 50mm" />
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Notes de prise de vue</label>
+        <textarea id="shotNotes" placeholder="Sujet, intention, filtre, mesure, etc."></textarea>
+      </div>
+      <div class="entry-actions" style="margin-top:12px">
+        <button id="saveShotBtn" class="btn-xs">Enregistrer cette vue</button>
+        <button id="moveToFridgeBtn" class="btn-xs">Mettre au frigo</button>
+        <button id="finishRollBtn" class="btn-xs">Terminer la pellicule</button>
+        <button id="continueDeleteBtn" class="btn-xs danger">Corbeille</button>
+        <button id="continueDeleteEverywhereBtn" class="btn-xs danger">Suppr partout</button>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:0.85rem;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Historique des vues</div>
+      <div id="continueShotsList"></div>
+    </div>
+  </div>
+  <div id="exportRow">
+    <button class="btn-out" id="exportJson">⬇ JSON</button>
+    <button class="btn-out" id="exportCsv">⬇ CSV</button>
+    <button class="btn-danger-sm" id="clearAll">🗑 Tout effacer</button>
+  </div>
+</div>
+
+<!-- Panel Sessions -->
+<div id="panelSessions" class="panel">
+  <div style="padding:8px 0 6px">
+    <div style="font-size:0.92rem;font-weight:700;color:#333">Archives par jour</div>
+    <div style="font-size:0.82rem;color:#666;margin-top:4px">Pellicules, plan-films et papiers termines sont ranges dans des dossiers par date. Tu peux renommer chaque dossier.</div>
+  </div>
+  <div class="filter-row">
+    <button class="btn-out filter-btn active" id="archiveViewArchive" type="button">Archives</button>
+    <button class="btn-out filter-btn" id="archiveViewTrash" type="button">Corbeille</button>
+  </div>
+  <div class="field">
+    <label>Dossier (jour)</label>
+    <select id="archiveFolderSelect"></select>
+  </div>
+  <div id="archiveEmpty" class="empty" style="display:none"></div>
+  <div id="archiveWorkspace" style="display:none;gap:12px;flex-direction:column">
+    <div class="entry-card">
+      <div class="field">
+        <label>Nom du dossier</label>
+        <div class="inline-row">
+          <input id="archiveFolderNameInput" type="text" placeholder="Nom du dossier..." />
+          <button id="saveArchiveFolderNameBtn" class="btn-mini" type="button">Renommer</button>
+        </div>
+      </div>
+    </div>
+    <div id="archiveFolderSummary" class="entry-card"></div>
+    <div>
+      <div style="font-size:0.85rem;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Contenu du dossier</div>
+      <div id="archiveEntriesList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Panel Settings -->
+<div id="panelSettings" class="panel">
+  <div style="padding:4px 0 2px">
+    <div style="font-size:0.92rem;font-weight:700;color:#333">Paramètres</div>
+    <div style="font-size:0.82rem;color:#666;margin-top:4px">Les réglages sont enregistrés automatiquement.</div>
+  </div>
+
+  <!-- Pratiques -->
+  <div class="settings-section" data-settings-section="practices">
+    <button class="settings-section-head" data-settings-toggle="practices" aria-expanded="true" type="button">
+      <span class="settings-head-title">🎯 Que pratiques-tu ?</span>
+      <span id="settingsSummaryPractices" class="settings-head-summary"></span>
+      <span class="settings-head-chevron">▾</span>
+    </button>
+    <div class="settings-section-body">
+    <ul class="settings-list" id="practicesList">
+      <li class="settings-group">Pellicule</li>
+      <li><label><input type="checkbox" id="prac_roll_35" /> 24x36 (35mm)</label></li>
+      <li><label><input type="checkbox" id="prac_roll_120" /> 120</label></li>
+      <li class="settings-group">Plan-film</li>
+      <li><label><input type="checkbox" id="prac_sheet_4x5" /> 4x5</label></li>
+      <li><label><input type="checkbox" id="prac_sheet_5x7" /> 5x7</label></li>
+      <li><label><input type="checkbox" id="prac_sheet_8x10" /> 8x10</label></li>
+      <li class="settings-group">Papier</li>
+      <li><label><input type="checkbox" id="prac_paper" /> Activer le papier photo</label></li>
+      <li><span style="font-size:0.82rem;color:#666">Types de papier gérés dans le catalogue ci-dessous.</span></li>
+    </ul>
+    </div>
+  </div>
+
+  <!-- Appareils -->
+  <div class="settings-section collapsed" data-settings-section="cameras">
+    <button class="settings-section-head" data-settings-toggle="cameras" aria-expanded="false" type="button">
+      <span class="settings-head-title">📷 Appareils</span>
+      <span id="settingsSummaryCameras" class="settings-head-summary"></span>
+      <span class="settings-head-chevron">▾</span>
+    </button>
+    <div class="settings-section-body">
+    <ul class="settings-list" id="settingsCameraList"></ul>
+    <div class="settings-add-row" style="flex-direction:column;gap:6px">
+      <div style="display:flex;gap:8px">
+        <input id="settingsCameraInput" type="text" placeholder="Nom de l'appareil…" style="flex:1" />
+        <button id="settingsCameraAdd">+ Ajouter</button>
+      </div>
+      <div class="camera-formats-add" id="cameraAddFormats">
+        <label><input type="checkbox" value="roll_35"> 35mm</label>
+        <label><input type="checkbox" value="roll_120"> 120</label>
+        <label><input type="checkbox" value="sheet_4x5"> 4×5</label>
+        <label><input type="checkbox" value="sheet_5x7"> 5×7</label>
+        <label><input type="checkbox" value="sheet_8x10"> 8×10</label>
+        <label><input type="checkbox" value="paper"> Papier</label>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <!-- Pellicules / Supports -->
+  <div class="settings-section collapsed" data-settings-section="films">
+    <button class="settings-section-head" data-settings-toggle="films" aria-expanded="false" type="button">
+      <span class="settings-head-title">🎞 Catalogue pellicules</span>
+      <span id="settingsSummaryFilms" class="settings-head-summary"></span>
+      <span class="settings-head-chevron">▾</span>
+    </button>
+    <div class="settings-section-body">
+    <div class="settings-search-row">
+      <input id="settingsFilmFilter" type="text" placeholder="Rechercher une pellicule..." />
+    </div>
+    <ul class="settings-list" id="settingsFilmList"></ul>
+    <div class="settings-add-row">
+      <input id="settingsFilmInput" type="text" placeholder="Nom du support (ex: Ilford HP5+ 400)…" />
+      <button id="settingsFilmAdd">+ Ajouter</button>
+    </div>
+    </div>
+  </div>
+
+  <!-- Papiers (section séparée) -->
+  <div class="settings-section collapsed" data-settings-section="papers">
+    <button class="settings-section-head" data-settings-toggle="papers" aria-expanded="false" type="button">
+      <span class="settings-head-title">🖼 Catalogue papiers</span>
+      <span id="settingsSummaryPapers" class="settings-head-summary"></span>
+      <span class="settings-head-chevron">▾</span>
+    </button>
+    <div class="settings-section-body">
+    <div class="settings-search-row">
+      <input id="settingsPaperFilter" type="text" placeholder="Rechercher un papier..." />
+    </div>
+    <ul class="settings-list" id="settingsPaperList"></ul>
+    <div class="settings-add-row">
+      <input id="settingsPaperInput" type="text" placeholder="Nom du papier (ex: Ilford RC Multigrade)…" />
+      <button id="settingsPaperAdd">+ Ajouter</button>
+    </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit modal (bottom sheet) -->
+<div id="editOverlay"></div>
+<div id="editSheet">
+  <div id="editSheetHead">
+    <h2>✏️ Modifier le sténopé</h2>
+    <button id="editSheetClose">✕</button>
+  </div>
+  <div id="editSheetBody">
+    <button class="btn-photo" id="editAddPhotoBtn">📷 Ajouter des photos</button>
+    <input id="editPhotoInput" type="file" accept="image/*" style="display:none" multiple>
+    <div id="editPhotosPreview"></div>
+    <div class="field">
+      <label>Type de boîte</label>
+      <select id="editBoxType">
+        <option>5x7 can</option>
+        <option>large (5x3.5)</option>
+        <option>small (2.5x3.5)</option>
+        <option>mini</option>
+        <option>custom</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Diamètre trou (mm)</label>
+      <select id="editHole"><option>0.26</option><option>0.4</option><option>0.5</option></select>
+    </div>
+    <div class="field">
+      <label>Type de papier</label>
+      <select id="editPaperType">
+        <option>Fomaspeed 311</option><option>RA4 Fujichristal</option><option>Ilford RC</option><option>Ilford FB</option><option>random</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Orientation</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="editOrientationSelect" style="flex:1">
+          <option>N</option><option>NE</option><option>E</option><option>SE</option>
+          <option>S</option><option>SW</option><option>W</option><option>NW</option>
+          <option value="libre">Libre (°)</option>
+        </select>
+        <input id="editOrientationDegree" type="number" placeholder="°" min="0" max="360" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);display:none">
+      </div>
+    </div>
+    <div class="field">
+      <label>Notes</label>
+      <textarea id="editNotes" placeholder="Orientation, lieu, conditions…"></textarea>
+    </div>
+    <button class="btn-save-edit" id="editSaveBtn">💾 Enregistrer les modifications</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════
+const GOOGLE_CLIENT_ID = '724133061731-g3lmkdkm84ejd2utads9a0i2sj63m1j9.apps.googleusercontent.com'
+const DRIVE_SCOPE    = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets'
+const DRIVE_FILENAME = 'film_logger_entries.json'
+const LEGACY_DRIVE_FILENAMES = ['solargraph_entries.json']
+const MYDRIVE_FOLDER_NAME = 'Film_Logger'
+const DRIVE_SHEET_FILENAME = 'film_logger_entries_sheet'
+const IDB_KEY        = 'film_logger_entries_v1'
+const LEGACY_IDB_KEY = 'solar_entries_v3'
+const UPLOAD_CONCURRENCY = 3   // parallel uploads at a time
+
+const LS_CAMERAS_KEY = 'ref_cameras_v2'
+const LS_CAMERAS_KEY_V1 = 'ref_cameras_v1' // legacy migration only
+const LS_FILM_STOCKS_KEY = 'ref_film_stocks_v1'
+const LS_PAPER_STOCKS_KEY = 'ref_paper_stocks_v1'
+const LS_ARCHIVE_FOLDERS_KEY = 'archive_folder_names_v1'
+const LS_PRACTICES_KEY = 'user_practices_v1'
+const PRACTICE_KEYS = ['roll_35','roll_120','sheet_4x5','sheet_5x7','sheet_8x10','paper']
+const TRASH_RETENTION_DAYS = 14
+const DELETE_QUEUE_KEY = 'film_logger_delete_queue_v1'
+
+const CATALOG_FILM_STOCKS = [
+  'Ilford HP5+ 400',
+  'Ilford FP4+ 125',
+  'Ilford Delta 100',
+  'Ilford Delta 400',
+  'Ilford Delta 3200',
+  'Ilford Pan F+ 50',
+  'Kentmere Pan 100',
+  'Kentmere Pan 400',
+  'Kodak Tri-X 400',
+  'Kodak T-Max 100',
+  'Kodak T-Max 400',
+  'Kodak Portra 160',
+  'Kodak Portra 400',
+  'Kodak Portra 800',
+  'Kodak Ektar 100',
+  'Kodak Gold 200',
+  'Kodak ColorPlus 200',
+  'Kodak Vision3 250D',
+  'Kodak Vision3 500T',
+  'Fomapan 100',
+  'Fomapan 200',
+  'Fomapan 400',
+  'Rollei RPX 100',
+  'Rollei RPX 400',
+  'CineStill 800T',
+  'Lomography Color 400',
+  'Adox CHS 100 II'
+]
+
+const CATALOG_PAPER_STOCKS = [
+  'Ilford RC Multigrade Pearl',
+  'Ilford RC Multigrade Glossy',
+  'Ilford RC Multigrade Satin',
+  'Ilford FB Multigrade Classic Matt',
+  'Ilford FB Multigrade Classic Glossy',
+  'Ilford Warmtone FB',
+  'Foma Fomaspeed RC 311',
+  'Foma Fomaspeed RC 312',
+  'Foma Fomaspeed RC 313',
+  'Foma Fomaspeed Variant 311',
+  'Foma Fomabrom 111',
+  'Foma Fomabrom 112',
+  'Adox MCC 110',
+  'Adox Lupex',
+  'Fuji Crystal Archive Type C'
+]
+
+const DEFAULT_CAMERAS = [
+  { name: 'Will Travel 4x5',    formats: ['sheet_4x5', 'paper'] },
+  { name: 'Will Travel 5x7',    formats: ['sheet_5x7'] },
+  { name: 'DIY 8x10',           formats: ['sheet_8x10', 'paper'] },
+  { name: '3D World Stereo',    formats: ['roll_120'] },
+  { name: 'Spoutnik Stereo',    formats: ['roll_120'] },
+  { name: 'Leica M4',           formats: ['roll_35'] },
+  { name: 'Stenope 3D Print V2', formats: ['paper'] }
+]
+const CAMERA_FORMAT_KEYS   = ['roll_35','roll_120','sheet_4x5','sheet_5x7','sheet_8x10','paper']
+const CAMERA_FORMAT_LABELS = {roll_35:'35mm',roll_120:'120',sheet_4x5:'4×5',sheet_5x7:'5×7',sheet_8x10:'8×10',paper:'Papier'}
+
+const DEFAULT_FILM_STOCKS = [
+  'Ilford HP5+ 400',
+  'Ilford FP4+ 125',
+  'Kodak Tri-X 400',
+  'Kodak T-Max 100',
+  'Fomapan 100',
+  'Fomapan 400',
+  'Kodak Portra 400',
+  'Kodak Ektar 100'
+]
+
+const DEFAULT_PAPER_STOCKS = [
+  'Ilford RC Multigrade Pearl',
+  'Ilford RC Multigrade Glossy',
+  'Ilford FB Multigrade Classic Matt',
+  'Foma Fomaspeed RC 400',
+  'Fuji Crystal Archive Type C'
+]
+
+const ROLL_FORMATS = ['24x36 (35mm)', '120']
+const SHEET_FORMATS = ['4x5', '5x7', '8x10']
+const PAPER_FORMATS = [
+  '4x5 in (10.2x12.7 cm)',
+  '5x7 in (12.7x17.8 cm)',
+  '8x10 in (20.3x25.4 cm)'
+]
+
+localforage.config({ name: 'film_logger' })
+
+let gToken       = null
+let driveFileId  = null
+let allEntries   = []
+let pendingPhotos = []
+let lastDriveSync = null
+let cameraOptions = []
+let filmStocks = []
+let paperStocks = []
+let settingsFilmFilter = ''
+let settingsPaperFilter = ''
+
+function isFilmLoggerEntry(entry){
+  return !!entry && (entry.entryType === 'roll' || entry.entryType === 'sheet')
+}
+
+function filterFilmLoggerEntries(entries){
+  return Array.isArray(entries) ? entries.filter(isFilmLoggerEntry) : []
+}
+
+// ── Expiry years ──────────────────────────────────────
+const EXPIRY_YEARS = (()=>{
+  const y=new Date().getFullYear(), arr=['—']
+  for(let i=y-30; i<=2030; i++) arr.push(String(i))
+  return arr
+})()
+
+// ── ISO values ────────────────────────────────────────
+const ISO_VALUES = ['6','12','25','50','64','100','125','160','200','320','400','640','800','1600','3200','6400','12800']
+
+// ── Stop-mode values ──────────────────────────────────
+const SHUTTER_FULL  = ['Bulb','30"','15"','8"','4"','2"','1"','1/2','1/4','1/8','1/15','1/30','1/60','1/125','1/250','1/500']
+const SHUTTER_HALF  = ['Bulb','30"','20"','15"','10"','8"','6"','4"','3"','2"','1"5','1"','0"7','1/2','1/3','1/4','1/6','1/8','1/10','1/15','1/20','1/30','1/45','1/60','1/90','1/125','1/180','1/250','1/350','1/500']
+const SHUTTER_THIRD = ['Bulb','30"','25"','20"','15"','13"','10"','8"','6"','5"','4"','3"2','2"5','2"','1"6','1"3','1"','0"8','0"6','1/2','1/3','1/4','1/5','1/6','1/8','1/10','1/13','1/15','1/20','1/25','1/30','1/40','1/50','1/60','1/80','1/100','1/125','1/160','1/200','1/250','1/320','1/400','1/500']
+const APERTURE_FULL  = ['f/1','f/1.4','f/2','f/2.8','f/4','f/5.6','f/8','f/11','f/16','f/22','f/32','f/45','f/64']
+const APERTURE_HALF  = ['f/1','f/1.2','f/1.4','f/1.7','f/2','f/2.4','f/2.8','f/3.4','f/4','f/4.8','f/5.6','f/6.7','f/8','f/9.5','f/11','f/13','f/16','f/19','f/22','f/27','f/32','f/38','f/45','f/54','f/64']
+const APERTURE_THIRD = ['f/1','f/1.1','f/1.2','f/1.4','f/1.6','f/1.8','f/2','f/2.2','f/2.5','f/2.8','f/3.2','f/3.5','f/4','f/4.5','f/5','f/5.6','f/6.3','f/7.1','f/8','f/9','f/10','f/11','f/12.7','f/14','f/16','f/18','f/20','f/22','f/25','f/29','f/32','f/36','f/40','f/45','f/51','f/57','f/64']
+
+let shotStopMode = 'full' // 'full' | 'half' | 'third'
+
+function getShutterList(){ return shotStopMode==='third' ? SHUTTER_THIRD : shotStopMode==='half' ? SHUTTER_HALF : SHUTTER_FULL }
+function getApertureList(){ return shotStopMode==='third' ? APERTURE_THIRD : shotStopMode==='half' ? APERTURE_HALF : APERTURE_FULL }
+
+function renderShutterSelect(keepVal){
+  const sel = document.getElementById('shotShutter')
+  if(!sel) return
+  const prev = keepVal !== undefined ? keepVal : sel.value
+  sel.innerHTML = '<option value="">— vitesse —</option>' + getShutterList().map(v=>`<option value="${v}"${v===prev?' selected':''}>${v}</option>`).join('')
+  const isBulb = sel.value === 'Bulb'
+  const bulbRow = document.getElementById('bulbRow')
+  if(bulbRow) bulbRow.style.display = isBulb ? 'flex' : 'none'
+}
+function renderApertureSelect(keepVal){
+  const sel = document.getElementById('shotAperture')
+  if(!sel) return
+  const prev = keepVal !== undefined ? keepVal : sel.value
+  sel.innerHTML = '<option value="">— ouverture —</option>' + getApertureList().map(v=>`<option value="${v}"${v===prev?' selected':''}>${v}</option>`).join('')
+}
+function setStopMode(mode){
+  shotStopMode = mode
+  ;['full','half','third'].forEach(m=>{
+    const btn = document.getElementById('stopMode_'+m)
+    if(btn) btn.classList.toggle('active', m===mode)
+  })
+  renderShutterSelect()
+  renderApertureSelect()
+}
+
+// continue/sort state
+let currentSort = 'date_desc'
+let selectedContinueId = null
+let selectedArchiveFolder = null
+let archiveFolderNames = {}
+let archiveView = 'archive'
+// practices + SP sub-type state
+let userPractices = {}
+let spSubType = 'sheet' // 'sheet' | 'paper'
+
+function buildSampleEntries(){
+  const now = Date.now()
+  return [
+    {
+      id:'sample-roll-35',
+      createdAt: now - 1000 * 60 * 60 * 24 * 3,
+      photos:[],
+      notes:'Pellicule deja chargee dans le Leica.',
+      finalPhotoDataURL:null,
+      entryType:'roll',
+      materialType:'film',
+      supportStatus:'active',
+      stockName:'Ilford HP5+ 400',
+      filmFormat:'24x36 (35mm)',
+      cameraName:'Leica M4',
+      frameCount:36,
+      shotsTaken:6,
+      ratedIso:400,
+      boxType:'Pellicule 24x36 (35mm)',
+      holeDiameter_mm:36,
+      paperType:'Ilford HP5+ 400'
+    },
+    {
+      id:'sample-roll-120-stereo',
+      createdAt: now - 1000 * 60 * 60 * 24,
+      photos:[],
+      notes:'Bobine en cours pour sorties stereo.',
+      finalPhotoDataURL:null,
+      entryType:'roll',
+      materialType:'film',
+      supportStatus:'active',
+      stockName:'Fomapan 100',
+      filmFormat:'120',
+      cameraName:'3D World Stereo',
+      frameCount:12,
+      shotsTaken:2,
+      ratedIso:100,
+      boxType:'Pellicule 120',
+      holeDiameter_mm:12,
+      paperType:'Fomapan 100'
+    }
+  ]
+}
+
+function mergeSampleEntries(entries){
+  const existing = Array.isArray(entries) ? entries.slice() : []
+  const ids = new Set(existing.map(e=>e.id))
+  buildSampleEntries().forEach(sample=>{
+    if(!ids.has(sample.id)) existing.unshift(sample)
+  })
+  return existing
+}
+
+function loadRefList(key, defaults){
+  try{
+    const raw = localStorage.getItem(key)
+    const arr = raw ? JSON.parse(raw) : null
+    if(Array.isArray(arr) && arr.length) return arr
+  }catch(e){}
+  return defaults.slice()
+}
+
+function saveRefList(key, arr){
+  try{ localStorage.setItem(key, JSON.stringify(arr)) }catch(e){}
+}
+
+// ── Camera objects {name, formats[]} ─────────────────
+function loadCameras(){
+  try{
+    const raw = localStorage.getItem(LS_CAMERAS_KEY)
+    if(raw){
+      const arr = JSON.parse(raw)
+      if(Array.isArray(arr) && arr.length) return arr
+    }
+  }catch{}
+  // migrate from v1 (strings)
+  try{
+    const raw = localStorage.getItem(LS_CAMERAS_KEY_V1)
+    if(raw){
+      const arr = JSON.parse(raw)
+      if(Array.isArray(arr) && arr.length){
+        const migrated = arr.map(v=>typeof v==='string' ? {name:v, formats:[]} : v)
+        saveCameras(migrated)
+        return migrated
+      }
+    }
+  }catch{}
+  return DEFAULT_CAMERAS.map(c=>({...c, formats:[...(c.formats||[])]}))
+}
+function saveCameras(arr){
+  try{ localStorage.setItem(LS_CAMERAS_KEY, JSON.stringify(arr)) }catch{}
+}
+function sortedCameras(arr){
+  return [...(arr||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||'','fr'))
+}
+function camerasForContext(ctx){
+  // ctx: one of CAMERA_FORMAT_KEYS — cameras with no formats show everywhere
+  return cameraOptions.filter(c=>!c.formats||!c.formats.length||c.formats.includes(ctx))
+}
+function cameraNamesForContext(ctx){
+  return camerasForContext(ctx).map(c=>c.name)
+}
+function cameraByName(name){
+  return cameraOptions.find(c=>c.name===name) || null
+}
+
+function uniqueSorted(arr){
+  return Array.from(new Set((arr||[]).map(v=>(v||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'fr'))
+}
+
+function normalizeForSearch(value){
+  return (value||'')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function fillSelectOptions(el, values, selected){
+  if(!el) return
+  el.innerHTML = ''
+  values.forEach(value=>{
+    const option = document.createElement('option')
+    option.value = value
+    option.textContent = value
+    el.appendChild(option)
+  })
+  if(selected && values.includes(selected)) el.value = selected
+}
+
+function renderCameraSelect(selected){
+  const el = document.getElementById('cameraSelect')
+  const fmt = document.getElementById('filmFormat')?.value || ''
+  const ctx = fmt.includes('120') ? 'roll_120' : 'roll_35'
+  fillSelectOptions(el, cameraNamesForContext(ctx), selected)
+}
+
+function getFormatsBySupportType(supportType){
+  if(supportType==='sheet') return SHEET_FORMATS
+  if(supportType==='paper') return PAPER_FORMATS
+  return ROLL_FORMATS
+}
+
+function renderFormatSelect(selected){
+  const el = document.getElementById('filmFormat')
+  const formats = getActiveRollFormats()
+  const next = selected && formats.includes(selected) ? selected : formats[0]
+  fillSelectOptions(el, formats, next)
+}
+
+function renderStockSelect(selected){
+  const el = document.getElementById('stockNameSelect')
+  const list = uniqueSorted(filmStocks||[])
+  fillSelectOptions(el, list, selected)
+}
+
+function renderExpiryYearSelect(selected){
+  const el = document.getElementById('expiryYear')
+  if(!el) return
+  fillSelectOptions(el, EXPIRY_YEARS, selected||'—')
+}
+
+function renderIsoSelect(selected){
+  const el = document.getElementById('ratedIso')
+  if(!el) return
+  fillSelectOptions(el, ISO_VALUES, selected||'400')
+}
+
+function inferMaterialTypeByStock(stockName){
+  if((paperStocks||[]).includes(stockName)) return 'paper'
+  return 'film'
+}
+
+function initReferenceLists(){
+  cameraOptions = sortedCameras(loadCameras())
+  filmStocks = uniqueSorted(loadRefList(LS_FILM_STOCKS_KEY, DEFAULT_FILM_STOCKS))
+  paperStocks = uniqueSorted(loadRefList(LS_PAPER_STOCKS_KEY, DEFAULT_PAPER_STOCKS))
+  renderCameraSelect()
+  renderFormatSelect()
+  renderStockSelect()
+  renderExpiryYearSelect()
+  renderIsoSelect()
+}
+
+// ── Practices ─────────────────────────────────────────
+function loadPractices(){
+  try{
+    const raw = localStorage.getItem(LS_PRACTICES_KEY)
+    if(raw){ userPractices = JSON.parse(raw) }
+    else { PRACTICE_KEYS.forEach(k=>{ userPractices[k]=true }); savePractices() }
+  }catch{ PRACTICE_KEYS.forEach(k=>{ userPractices[k]=true }) }
+}
+function savePractices(){
+  try{ localStorage.setItem(LS_PRACTICES_KEY, JSON.stringify(userPractices)) }catch{}
+}
+
+function getActiveRollFormats(){
+  const out = []
+  if(userPractices['roll_35'] !== false) out.push('24x36 (35mm)')
+  if(userPractices['roll_120'] !== false) out.push('120')
+  return out.length ? out : ROLL_FORMATS.slice()
+}
+function getActiveSheetFormats(){
+  const map = {'sheet_4x5':'4x5','sheet_5x7':'5x7','sheet_8x10':'8x10'}
+  const out = SHEET_FORMATS.filter(f=>{ const k=Object.keys(map).find(k=>map[k]===f); return !k || userPractices[k]!==false })
+  return out.length ? out : SHEET_FORMATS.slice()
+}
+function getActivePaperFormats(){
+  const idxMap = [userPractices['sheet_4x5']!==false, userPractices['sheet_5x7']!==false, userPractices['sheet_8x10']!==false]
+  const out = PAPER_FORMATS.filter((_,i)=>idxMap[i])
+  return out.length ? out : PAPER_FORMATS.slice()
+}
+
+function applyPracticeVisibility(){
+  const hasRoll = userPractices['roll_35'] || userPractices['roll_120']
+  const hasSheet = userPractices['sheet_4x5'] || userPractices['sheet_5x7'] || userPractices['sheet_8x10']
+  const hasPaper = userPractices['paper']
+
+  const tabRoll    = document.querySelector('[data-tab="panelRoll"]')
+  const tabSP      = document.querySelector('[data-tab="panelSheetPaper"]')
+  const tabCont    = document.querySelector('[data-tab="panelContinue"]')
+  if(tabRoll)  tabRoll.style.display  = hasRoll  ? '' : 'none'
+  if(tabSP)    tabSP.style.display    = (hasSheet || hasPaper) ? '' : 'none'
+  if(tabCont)  tabCont.style.display  = hasRoll  ? '' : 'none'
+
+  // SP sub-type button visibility
+  const spBtnSheet = document.getElementById('spBtnSheet')
+  const spBtnPaper = document.getElementById('spBtnPaper')
+  if(spBtnSheet) spBtnSheet.style.display = hasSheet ? '' : 'none'
+  if(spBtnPaper) spBtnPaper.style.display = hasPaper ? '' : 'none'
+  // auto-switch if current sub-type no longer available
+  if(spSubType==='sheet' && !hasSheet && hasPaper) setSpSubType('paper')
+  if(spSubType==='paper' && !hasPaper && hasSheet) setSpSubType('sheet')
+
+  // Update roll format list
+  const curFmt = document.getElementById('filmFormat')?.value
+  fillSelectOptions(document.getElementById('filmFormat'), getActiveRollFormats(), curFmt)
+
+  // Update SP format list
+  renderSpFormatSelect()
+}
+
+function renderPracticesCheckboxes(){
+  PRACTICE_KEYS.forEach(k=>{
+    const el = document.getElementById('prac_'+k)
+    if(el) el.checked = !!userPractices[k]
+  })
+}
+
+// ── SP (Plan-film / Papier) panel ─────────────────────
+function setSpSubType(type){
+  spSubType = type
+  const btnSheet = document.getElementById('spBtnSheet')
+  const btnPaper = document.getElementById('spBtnPaper')
+  if(btnSheet) btnSheet.classList.toggle('active', type==='sheet')
+  if(btnPaper) btnPaper.classList.toggle('active', type==='paper')
+  renderSpPanel()
+}
+
+function renderSpFormatSelect(keepVal){
+  const sel = document.getElementById('spFormat')
+  if(!sel) return
+  const prev = keepVal !== undefined ? keepVal : sel.value
+  const list = spSubType==='paper' ? getActivePaperFormats() : getActiveSheetFormats()
+  fillSelectOptions(sel, list, prev && list.includes(prev) ? prev : list[0])
+}
+
+function renderSpStockSelect(keepVal){
+  const sel = document.getElementById('spStock')
+  if(!sel) return
+  const list = spSubType==='paper' ? uniqueSorted(paperStocks||[]) : uniqueSorted(filmStocks||[])
+  fillSelectOptions(sel, list, keepVal)
+}
+
+function renderSpCameraSelect(){
+  const sel = document.getElementById('spCamera')
+  let ctx
+  if(spSubType==='paper') ctx='paper'
+  else {
+    const fmtVal = document.getElementById('spFormat')?.value || ''
+    if(fmtVal.startsWith('8x10')) ctx='sheet_8x10'
+    else if(fmtVal.startsWith('5x7')) ctx='sheet_5x7'
+    else ctx='sheet_4x5'
+  }
+  fillSelectOptions(sel, cameraNamesForContext(ctx))
+}
+
+function renderSpPanel(){
+  const label = document.getElementById('spStockLabel')
+  const cntLabel = document.getElementById('spSheetCountLabel')
+  const expLabel = document.getElementById('spSheetsExposedLabel')
+  const cameraField = document.getElementById('spCameraField')
+  const saveBtn = document.getElementById('saveBtnSP')
+
+  if(label) label.textContent = spSubType==='paper' ? 'Type de papier' : 'Type de plan-film'
+  if(cntLabel) cntLabel.textContent = spSubType==='paper' ? 'Quantité de feuilles papier' : 'Quantité de plans-films'
+  if(expLabel) expLabel.textContent = spSubType==='paper' ? 'Feuilles déjà exposées' : 'Plans déjà exposés'
+  if(cameraField) cameraField.style.display = spSubType==='paper' ? 'none' : 'flex'
+  if(saveBtn) saveBtn.textContent = spSubType==='paper' ? '💾 Enregistrer le papier' : '💾 Enregistrer le plan-film'
+
+  renderSpFormatSelect()
+  renderSpStockSelect()
+  renderSpCameraSelect()
+}
+
+function getContinueEntries(entries){
+  let out = (entries||[]).slice()
+  out = out.filter(e=>e.entryType==='roll' && (e.supportStatus||'active')!=='finished')
+  out.sort((a,b)=>{
+    if(currentSort==='date_desc') return (b.createdAt||0)-(a.createdAt||0)
+    if(currentSort==='date_asc') return (a.createdAt||0)-(b.createdAt||0)
+    const ar = (a.entryType==='sheet' ? (a.sheetsExposed||0) / Math.max(a.sheetCount||1,1) : (a.shotsTaken||0) / Math.max(a.frameCount||1,1))
+    const br = (b.entryType==='sheet' ? (b.sheetsExposed||0) / Math.max(b.sheetCount||1,1) : (b.shotsTaken||0) / Math.max(b.frameCount||1,1))
+    if(currentSort==='progress_desc') return br-ar
+    if(currentSort==='progress_asc') return ar-br
+    return 0
+  })
+  return out
+}
+
+// ── Toast ─────────────────────────────────────────────
+let _toastTimer = null
+function toast(msg, duration=2500){
+  const el = document.getElementById('toast')
+  el.textContent = msg; el.classList.add('show')
+  if(_toastTimer) clearTimeout(_toastTimer)
+  _toastTimer = setTimeout(()=>el.classList.remove('show'), duration)
+}
+
+// ── IndexedDB ─────────────────────────────────────────
+async function localLoad(){
+  try{
+    const stored = await localforage.getItem(IDB_KEY)
+    const filtered = filterFilmLoggerEntries(stored)
+    if(filtered.length || (Array.isArray(stored) && stored.length === 0)){
+      return mergeSampleEntries(filtered)
+    }
+
+    const legacyStore = localforage.createInstance({ name: 'solargraph_trk' })
+    const legacyStored = await legacyStore.getItem(LEGACY_IDB_KEY)
+    const migrated = filterFilmLoggerEntries(legacyStored)
+    if(migrated.length) await localforage.setItem(IDB_KEY, migrated)
+    return mergeSampleEntries(migrated)
+  }catch{
+    return mergeSampleEntries([])
+  }
+}
+async function localSave(arr){ await localforage.setItem(IDB_KEY, filterFilmLoggerEntries(arr)) }
+
+function loadDeleteQueue(){
+  try{ return JSON.parse(localStorage.getItem(DELETE_QUEUE_KEY)||'[]')||[] }catch{return []}
+}
+function saveDeleteQueue(queue){
+  try{ localStorage.setItem(DELETE_QUEUE_KEY, JSON.stringify(queue||[])) }catch(e){}
+}
+function enqueueDeleteJob(entry){
+  const fileIds = []
+  for(const photo of (entry.myDrivePhotos||[])) if(photo && photo.fileId) fileIds.push(photo.fileId)
+  if(entry.myDriveFinal && entry.myDriveFinal.fileId) fileIds.push(entry.myDriveFinal.fileId)
+  const queue = loadDeleteQueue()
+  queue.push({ entryId: entry.id, fileIds: Array.from(new Set(fileIds)), createdAt: Date.now() })
+  saveDeleteQueue(queue)
+}
+function cancelDeleteJobs(entryId){
+  saveDeleteQueue(loadDeleteQueue().filter(job=>job.entryId!==entryId))
+}
+function purgeExpiredTrashEntries(entries){
+  const maxAge = TRASH_RETENTION_DAYS * 86400000
+  const now = Date.now()
+  return (entries||[]).filter(entry=>{
+    const expired = entry.deletedAt && (now - Number(entry.deletedAt) > maxAge)
+    if(expired) enqueueDeleteJob(entry)
+    return !expired
+  })
+}
+
+function entryModifiedAt(entry){
+  return Number((entry && (entry.updatedAt || entry.createdAt)) || 0)
+}
+
+function mergeFilmLoggerEntries(localEntries, driveEntries){
+  const byId = new Map()
+  for(const e of filterFilmLoggerEntries(driveEntries)){
+    if(e && e.id) byId.set(e.id, e)
+  }
+  for(const e of filterFilmLoggerEntries(localEntries)){
+    if(!e || !e.id) continue
+    const prev = byId.get(e.id)
+    if(!prev || entryModifiedAt(e) >= entryModifiedAt(prev)) byId.set(e.id, e)
+  }
+  return Array.from(byId.values()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))
+}
+
+// ── Helpers ───────────────────────────────────────────
+function sanitize(s){ return (s||'').toString().replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_\-.]/g,'') }
+function entryFilename(e, idx, isFinal=false){
+  const d = new Date(e.createdAt||Date.now())
+  const dd = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  const suf = isFinal ? 'final' : String(idx)
+  return `${dd}_${sanitize(e.boxType)}_${sanitize(e.paperType)}_${sanitize(e.holeDiameter_mm)}_${suf}.jpg`
+}
+
+// ── Drive appData (hidden sync) ───────────────────────
+async function driveFindByName(name){
+  const q = encodeURIComponent(`name='${name}'`)
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d = await r.json()
+  return d.files && d.files[0] ? d.files[0].id : null
+}
+async function driveFind(){
+  const preferred = await driveFindByName(DRIVE_FILENAME)
+  if(preferred) return preferred
+  for(const legacyName of LEGACY_DRIVE_FILENAMES){
+    const legacyId = await driveFindByName(legacyName)
+    if(legacyId) return legacyId
+  }
+  return null
+}
+async function driveRead(fid){
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fid}?alt=media`,{headers:{Authorization:`Bearer ${gToken}`}})
+  return r.json()
+}
+async function driveWrite(entries){
+  const content = JSON.stringify(entries)
+  if(driveFileId){
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,{
+      method:'PATCH',headers:{Authorization:`Bearer ${gToken}`,'Content-Type':'application/json'},body:content})
+  } else {
+    const bnd = 'solar_bnd_'+Date.now()
+    const meta = JSON.stringify({name:DRIVE_FILENAME,parents:['appDataFolder']})
+    const body = `--${bnd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${bnd}\r\nContent-Type: application/json\r\n\r\n${content}\r\n--${bnd}--`
+    const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+      method:'POST',headers:{Authorization:`Bearer ${gToken}`,'Content-Type':`multipart/related; boundary=${bnd}`},body})
+    const d = await r.json(); if(d.id) driveFileId = d.id
+  }
+  lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
+}
+async function syncFromDrive(){
+  try{
+    const localEntries = filterFilmLoggerEntries(await localLoad())
+    const preferredDriveFileId = await driveFindByName(DRIVE_FILENAME)
+    if(preferredDriveFileId){
+      driveFileId = preferredDriveFileId
+      const driveEntries = filterFilmLoggerEntries(await driveRead(driveFileId))
+      allEntries = purgeExpiredTrashEntries(mergeSampleEntries(mergeFilmLoggerEntries(localEntries, driveEntries)))
+      await localSave(allEntries)
+      await driveWrite(allEntries)
+      lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
+    } else {
+      let migratedFromLegacy = false
+      for(const legacyName of LEGACY_DRIVE_FILENAMES){
+        const legacyDriveFileId = await driveFindByName(legacyName)
+        if(!legacyDriveFileId) continue
+        const legacyEntries = filterFilmLoggerEntries(await driveRead(legacyDriveFileId))
+        allEntries = purgeExpiredTrashEntries(mergeSampleEntries(mergeFilmLoggerEntries(localEntries, legacyEntries)))
+        await localSave(allEntries)
+        lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
+        driveFileId = null
+        if(allEntries.length>0) await driveWrite(allEntries)
+        migratedFromLegacy = true
+        break
+      }
+      if(!migratedFromLegacy){
+        allEntries = purgeExpiredTrashEntries(mergeSampleEntries(localEntries))
+        driveFileId = null
+        if(allEntries.length>0) await driveWrite(allEntries)
+      }
+    }
+  }catch(e){console.error('Drive sync:',e)}
+}
+async function saveAndSync(arr){
+  allEntries = purgeExpiredTrashEntries(filterFilmLoggerEntries(arr))
+  await localSave(allEntries)
+  if(gToken){ try{await driveWrite(allEntries)}catch(e){console.error('driveWrite:',e)} }
+  if(gToken){ try{await processDeleteQueue()}catch(e){console.error('deleteQueue:',e)} }
+  if(gToken && localStorage.getItem('autoPublish')==='1'){
+    try{await publishEntriesToMyDrive(allEntries.filter(e=>!e.deletedAt))}catch(e){console.error('auto-publish:',e)}
+  }
+  renderAll()
+}
+
+// ── Google Auth ───────────────────────────────────────
+function initGoogleAuth(){
+  if(typeof google==='undefined'||!google.accounts) return
+  window.tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id:GOOGLE_CLIENT_ID, scope:DRIVE_SCOPE,
+    error_callback: (err)=>{
+      const reason = (err && (err.type || err.error || err.message)) || 'unknown_error'
+      console.error('Google auth popup error:', err)
+      if(reason === 'popup_failed_to_open' || reason === 'popup_closed'){
+        toast('Popup Google bloqué/fermé. Autorise les popups puis réessaie.')
+      } else {
+        toast('Connexion Google impossible ('+reason+').')
+      }
+    },
+    callback: async resp=>{
+      if(resp.error){toast('Erreur auth: '+resp.error); return}
+      gToken = resp.access_token
+      updateAuthUI(true)
+      try{localStorage.setItem('gsi_granted','1')}catch(e){}
+      await syncFromDrive()
+      await processDeleteQueue()
+      renderAll()
+    }
+  })
+}
+document.getElementById('authBtn').addEventListener('click',()=>{
+  if(gToken){
+    google.accounts.oauth2.revoke(gToken,()=>{gToken=null;try{localStorage.removeItem('gsi_granted')}catch(e){}; updateAuthUI(false)})
+  } else {
+    if(window.tokenClient) window.tokenClient.requestAccessToken({prompt:'select_account'})
+    else toast('SDK Google non chargé, attends 2s')
+  }
+})
+document.getElementById('switchAccountBtn').addEventListener('click',()=>{
+  if(!window.tokenClient){ toast('SDK Google non chargé, attends 2s'); return }
+  window.tokenClient.requestAccessToken({prompt:'select_account'})
+})
+function updateAuthUI(loggedIn){
+  document.getElementById('authBtn').textContent = loggedIn ? '🔓 Déconnexion' : '🔐 Connexion Google'
+  document.getElementById('authBtn').className = loggedIn ? 'd-btn danger' : 'd-btn primary'
+  document.getElementById('authStatus').textContent = loggedIn ? '✓ Connecté' : 'Déconnecté'
+  document.getElementById('authDot').className = loggedIn ? 'ok' : ''
+  document.getElementById('authDot').title = loggedIn ? 'Connecté à Google Drive' : 'Déconnecté'
+  renderStorageBar(); updateDriveInfo()
+}
+function updateDriveInfo(){
+  const el = document.getElementById('driveInfo'); if(!el) return
+  if(!gToken){el.textContent='—'; return}
+  const v = localStorage.getItem('lastDriveSync')
+  el.textContent = v ? `${allEntries.length} entrées · ${new Date(Number(v)).toLocaleTimeString()}` : `${allEntries.length} entrées`
+}
+
+function updateTrashInfo(){
+  const el = document.getElementById('trashInfo')
+  if(!el) return
+  const count = allEntries.filter(e=>!!e.deletedAt).length
+  el.textContent = `${count} entrée${count>1?'s':''}`
+}
+
+// ── Drive My Drive (visible publish) ─────────────────
+async function driveFindFolder(name){
+  const q = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents`)
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d = await r.json(); return d.files&&d.files[0]?d.files[0].id:null
+}
+async function driveCreateFolder(name){
+  const r = await fetch('https://www.googleapis.com/drive/v3/files',{
+    method:'POST',headers:{Authorization:`Bearer ${gToken}`,'Content-Type':'application/json'},
+    body:JSON.stringify({name,mimeType:'application/vnd.google-apps.folder',parents:['root']})})
+  return (await r.json()).id
+}
+async function getFileMeta(id){
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,webViewLink`,{headers:{Authorization:`Bearer ${gToken}`}})
+  return r.json()
+}
+async function driveFindFileInFolder(folderId,filename){
+  const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents`)
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d = await r.json(); return d.files&&d.files[0]?d.files[0].id:null
+}
+async function driveDeleteFile(fileId){
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`,{
+    method:'DELETE', headers:{Authorization:`Bearer ${gToken}`}
+  })
+  if(!r.ok && r.status!==404) throw new Error('delete_failed_'+r.status)
+}
+async function driveListChildren(folderId){
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`)
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d = await r.json()
+  return d.files || []
+}
+async function processDeleteQueue(){
+  if(!gToken) return {processed:0, failed:0}
+  const queue = loadDeleteQueue()
+  if(!queue.length) return {processed:0, failed:0}
+  const keep = []
+  let processed = 0
+  let failed = 0
+  for(const job of queue){
+    try{
+      for(const fid of (job.fileIds||[])) await driveDeleteFile(fid)
+      processed++
+    }catch(e){
+      failed++
+      keep.push(job)
+    }
+  }
+  saveDeleteQueue(keep)
+  return {processed, failed}
+}
+async function uploadDataURLToFolder(dataURL,filename,folderId){
+  const binStr = atob(dataURL.split(',')[1])
+  const u8 = new Uint8Array(binStr.length)
+  for(let i=0;i<binStr.length;i++) u8[i]=binStr.charCodeAt(i)
+  const blob = new Blob([u8],{type:'image/jpeg'})
+  const meta = JSON.stringify({name:filename,parents:[folderId]})
+  const fd = new FormData()
+  fd.append('metadata',new Blob([meta],{type:'application/json'}))
+  fd.append('file',blob,filename)
+  const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+    method:'POST',headers:{Authorization:`Bearer ${gToken}`},body:fd})
+  const j = await r.json()
+  if(j&&j.id){ const m=await getFileMeta(j.id); return Object.assign({},j,m) }
+  return j
+}
+async function uploadJSONToFolder(obj,filename,folderId){
+  const content = JSON.stringify(obj)
+  const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents`)
+  const r0 = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d0 = await r0.json()
+  if(d0.files&&d0.files[0]){
+    const id=d0.files[0].id
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,{
+      method:'PATCH',headers:{Authorization:`Bearer ${gToken}`,'Content-Type':'application/json'},body:content})
+    return {id}
+  }
+  const fd = new FormData()
+  fd.append('metadata',new Blob([JSON.stringify({name:filename,parents:[folderId]})],{type:'application/json'}))
+  fd.append('file',new Blob([content],{type:'application/json'}),filename)
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+    method:'POST',headers:{Authorization:`Bearer ${gToken}`},body:fd})
+  return r.json()
+}
+
+async function uploadTextToFolder(text, filename, mimeType, folderId){
+  const q = encodeURIComponent(`name='${filename}' and '${folderId}' in parents`)
+  const r0 = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d0 = await r0.json()
+  if(d0.files&&d0.files[0]){
+    const id=d0.files[0].id
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,{
+      method:'PATCH',headers:{Authorization:`Bearer ${gToken}`,'Content-Type':mimeType},body:text})
+    return {id}
+  }
+  const fd = new FormData()
+  fd.append('metadata',new Blob([JSON.stringify({name:filename,parents:[folderId]})],{type:'application/json'}))
+  fd.append('file',new Blob([text],{type:mimeType}),filename)
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+    method:'POST',headers:{Authorization:`Bearer ${gToken}`},body:fd})
+  return r.json()
+}
+
+async function driveFindSpreadsheetInFolder(folderId, filename){
+  const q = encodeURIComponent(`name='${filename}' and mimeType='application/vnd.google-apps.spreadsheet' and '${folderId}' in parents`)
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,webViewLink)`,{headers:{Authorization:`Bearer ${gToken}`}})
+  const d = await r.json()
+  return d.files && d.files[0] ? d.files[0] : null
+}
+
+async function driveCreateSpreadsheetInFolder(folderId, filename){
+  const r = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method:'POST',
+    headers:{Authorization:`Bearer ${gToken}`,'Content-Type':'application/json'},
+    body: JSON.stringify({
+      name: filename,
+      mimeType: 'application/vnd.google-apps.spreadsheet',
+      parents: [folderId]
+    })
+  })
+  const d = await r.json()
+  return d && d.id ? d : null
+}
+
+function entriesToSheetRows(entries){
+  const headers = [
+    'id','createdAt','updatedAt','entryType','materialType','supportStatus','stockName','filmFormat','cameraName',
+    'frameCount','shotsTaken','sheetCount','sheetsExposed','ratedIso','expiresYear','finishedAt','notes'
+  ]
+  const rows = [headers]
+  for(const e of (entries||[])){
+    rows.push([
+      e.id || '',
+      e.createdAt ? new Date(e.createdAt).toISOString() : '',
+      e.updatedAt ? new Date(e.updatedAt).toISOString() : '',
+      e.entryType || '',
+      e.materialType || '',
+      e.supportStatus || '',
+      e.stockName || '',
+      e.filmFormat || '',
+      e.cameraName || '',
+      e.frameCount ?? '',
+      e.shotsTaken ?? '',
+      e.sheetCount ?? '',
+      e.sheetsExposed ?? '',
+      e.ratedIso ?? '',
+      e.expiresYear || '',
+      e.finishedAt ? new Date(e.finishedAt).toISOString() : '',
+      e.notes || ''
+    ])
+  }
+  return rows
+}
+
+async function updateSpreadsheetValues(spreadsheetId, rows){
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A1:ZZ100000:clear`, {
+    method: 'POST',
+    headers: {Authorization:`Bearer ${gToken}`, 'Content-Type':'application/json'},
+    body: JSON.stringify({})
+  })
+
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A1?valueInputOption=RAW`, {
+    method: 'PUT',
+    headers: {Authorization:`Bearer ${gToken}`, 'Content-Type':'application/json'},
+    body: JSON.stringify({range:'A1', majorDimension:'ROWS', values: rows})
+  })
+  if(!r.ok){
+    const txt = await r.text()
+    throw new Error(`sheets_update_failed_${r.status}:${txt}`)
+  }
+}
+
+async function upsertGoogleSheetInFolder(entries, folderId){
+  let sheetMeta = await driveFindSpreadsheetInFolder(folderId, DRIVE_SHEET_FILENAME)
+  if(!sheetMeta) sheetMeta = await driveCreateSpreadsheetInFolder(folderId, DRIVE_SHEET_FILENAME)
+  if(!sheetMeta || !sheetMeta.id) throw new Error('sheet_create_failed')
+  const rows = entriesToSheetRows(entries)
+  await updateSpreadsheetValues(sheetMeta.id, rows)
+  return sheetMeta
+}
+
+function toCsvCell(value){
+  const raw = value == null ? '' : String(value)
+  const escaped = raw.replace(/"/g, '""')
+  return `"${escaped}"`
+}
+
+function entriesToCsv(entries){
+  const headers = [
+    'id','createdAt','updatedAt','entryType','materialType','supportStatus','stockName','filmFormat','cameraName',
+    'frameCount','shotsTaken','sheetCount','sheetsExposed','ratedIso','expiresYear','finishedAt','notes'
+  ]
+  const lines = [headers.join(',')]
+  for(const e of (entries||[])){
+    const row = [
+      e.id,
+      e.createdAt ? new Date(e.createdAt).toISOString() : '',
+      e.updatedAt ? new Date(e.updatedAt).toISOString() : '',
+      e.entryType || '',
+      e.materialType || '',
+      e.supportStatus || '',
+      e.stockName || '',
+      e.filmFormat || '',
+      e.cameraName || '',
+      e.frameCount ?? '',
+      e.shotsTaken ?? '',
+      e.sheetCount ?? '',
+      e.sheetsExposed ?? '',
+      e.ratedIso ?? '',
+      e.expiresYear || '',
+      e.finishedAt ? new Date(e.finishedAt).toISOString() : '',
+      e.notes || ''
+    ]
+    lines.push(row.map(toCsvCell).join(','))
+  }
+  return lines.join('\n')
+}
+
+// ── Parallel publish ──────────────────────────────────
+async function publishEntriesToMyDrive(entries){
+  if(!gToken) throw new Error('Not authenticated')
+  const folderName = MYDRIVE_FOLDER_NAME
+  let folderId = await driveFindFolder(folderName)
+  if(!folderId) folderId = await driveCreateFolder(folderName)
+
+  // Build flat list of upload tasks
+  const tasks = []
+  for(const e of entries){
+    e.myDrivePhotos = e.myDrivePhotos||[]
+    for(let i=0;i<(e.photos||[]).length;i++){
+      if(e.myDrivePhotos[i]&&e.myDrivePhotos[i].fileId) continue // already uploaded
+      tasks.push({e, i, url:e.photos[i], fname:entryFilename(e,i,false), isFinal:false})
+    }
+    if(e.finalPhotoDataURL&&!(e.myDriveFinal&&e.myDriveFinal.fileId)){
+      tasks.push({e, i:-1, url:e.finalPhotoDataURL, fname:entryFilename(e,-1,true), isFinal:true})
+    }
+  }
+
+  const total = tasks.length
+  let done = 0
+  const progEl = document.getElementById('pubProgress')
+  const statusEl = document.getElementById('pubStatus')
+  if(progEl){ progEl.style.display='block'; progEl.value=0 }
+  const upd = ()=>{
+    done++
+    if(progEl&&total>0) progEl.value = Math.round((done/total)*100)
+    if(statusEl) statusEl.textContent = `${done}/${total} photos`
+  }
+
+  // Pool: run UPLOAD_CONCURRENCY tasks at a time
+  async function runTask(t){
+    const existingId = await driveFindFileInFolder(folderId, t.fname)
+    let result
+    if(existingId){
+      const m = await getFileMeta(existingId)
+      result = { fileId:m.id, name:m.name, webViewLink:m.webViewLink }
+    } else {
+      const res = await uploadDataURLToFolder(t.url, t.fname, folderId)
+      if(res&&res.id) result = { fileId:res.id, name:res.name, webViewLink:res.webViewLink }
+    }
+    if(result){
+      if(t.isFinal) t.e.myDriveFinal = result
+      else t.e.myDrivePhotos[t.i] = result
+    }
+    upd()
+  }
+
+  // Chunked parallel execution
+  for(let i=0;i<tasks.length;i+=UPLOAD_CONCURRENCY){
+    await Promise.all(tasks.slice(i,i+UPLOAD_CONCURRENCY).map(runTask))
+  }
+
+  if(total===0 && statusEl) statusEl.textContent = 'Aucune nouvelle photo à publier'
+
+  if(statusEl) statusEl.textContent = 'Mise à jour des fichiers de synthèse…'
+  await uploadJSONToFolder(entries,DRIVE_FILENAME,folderId)
+  await uploadTextToFolder(entriesToCsv(entries), 'film_logger_entries.csv', 'text/csv', folderId)
+  try{
+    await upsertGoogleSheetInFolder(entries, folderId)
+  }catch(sheetErr){
+    // Sheets API may be disabled — non-blocking, Drive JSON/CSV were already saved
+    console.warn('Google Sheet update skipped:', sheetErr)
+    if(statusEl) statusEl.textContent = '⚠ Google Sheets non activé (Drive JSON/CSV OK)'
+  }
+  if(statusEl) statusEl.textContent = total>0 ? `✓ ${total} photos publiées` : '✓ Métadonnées mises à jour'
+  if(progEl) progEl.value = 100
+
+  try{await localSave(entries); if(gToken) await driveWrite(entries)}catch(e){}
+  lastDriveSync = Date.now(); try{localStorage.setItem('lastDriveSync',String(lastDriveSync))}catch(e){}
+  updateDriveInfo()
+
+  setTimeout(()=>{
+    if(progEl){progEl.style.display='none'; progEl.value=0}
+    if(statusEl) statusEl.textContent=''
+  },3000)
+
+  return {folderId, total}
+}
+
+document.getElementById('publishBtn').addEventListener('click',async()=>{
+  if(!gToken){toast('Connecte-toi d\u2019abord à Google.'); return}
+  document.getElementById('pubStatus').textContent = 'Démarrage…'
+  document.getElementById('pubProgress').style.display='block'
+  try{
+    await processDeleteQueue()
+    const r = await publishEntriesToMyDrive(allEntries.filter(e=>!e.deletedAt))
+    toast(`✓ Publié : ${r.total} photo(s) sur Mon Drive`)
+  }catch(e){toast('Erreur: '+(e.message||e)); console.error(e)}
+})
+document.getElementById('cleanupDriveBtn').addEventListener('click',async()=>{
+  if(!gToken){toast('Connecte-toi d\u2019abord à Google.'); return}
+  if(!confirm('Supprimer les fichiers orphelins dans Film_Logger ?')) return
+  try{
+    const folderId = await driveFindFolder(MYDRIVE_FOLDER_NAME)
+    if(!folderId){toast('Dossier Film_Logger introuvable'); return}
+    const children = await driveListChildren(folderId)
+    const keepFiles = new Set()
+    for(const entry of allEntries.filter(e=>!e.deletedAt)){
+      for(const photo of (entry.myDrivePhotos||[])) if(photo && photo.fileId) keepFiles.add(photo.fileId)
+      if(entry.myDriveFinal && entry.myDriveFinal.fileId) keepFiles.add(entry.myDriveFinal.fileId)
+    }
+    let removed = 0
+    for(const child of children){
+      if(child.name===DRIVE_FILENAME || child.name==='film_logger_entries.csv' || child.name===DRIVE_SHEET_FILENAME) continue
+      if(!keepFiles.has(child.id)){
+        await driveDeleteFile(child.id)
+        removed++
+      }
+    }
+    toast(`Nettoyage terminé: ${removed} élément(s) supprimé(s)`)
+  }catch(e){toast('Erreur nettoyage: '+(e.message||e)); console.error(e)}
+})
+document.getElementById('checkDriveBtn').addEventListener('click',async()=>{
+  if(!gToken){toast('Connecte-toi d\u2019abord.'); return}
+  try{
+    const fid=await driveFind()
+    if(!fid){toast('Aucun fichier dans appDataFolder'); return}
+    const data=await driveRead(fid)
+    const v=localStorage.getItem('lastDriveSync')
+    toast(`Drive: ${Array.isArray(data)?data.length:0} entrées · ${v?new Date(Number(v)).toLocaleString():'n/a'}`, 4000)
+  }catch(e){toast('Erreur Drive: '+(e.message||e))}
+})
+document.getElementById('resetDriveLinks').addEventListener('click',async()=>{
+  if(!confirm('Réinitialiser les liens Drive ? Le prochain publish re-uploadera tout.')) return
+  for(const e of allEntries){delete e.myDrivePhotos; delete e.myDriveFinal}
+  await saveAndSync(allEntries)
+  toast('Liens réinitialisés ✓')
+})
+
+// auto-publish toggle
+const autoToggle = document.getElementById('autoPublishToggle')
+try{autoToggle.checked = localStorage.getItem('autoPublish')==='1'}catch(e){}
+autoToggle.addEventListener('change',()=>{
+  try{localStorage.setItem('autoPublish',autoToggle.checked?'1':'0')}catch(e){}
+  toast(autoToggle.checked?'Auto-publish activé':'Auto-publish désactivé')
+})
+
+// ── Drawer ────────────────────────────────────────────
+const drawer=document.getElementById('drawer')
+const overlay=document.getElementById('drawerOverlay')
+function openDrawer(){drawer.classList.add('open');overlay.classList.add('open')}
+function closeDrawer(){drawer.classList.remove('open');overlay.classList.remove('open')}
+document.getElementById('gearBtn').addEventListener('click',openDrawer)
+document.getElementById('drawerClose').addEventListener('click',closeDrawer)
+overlay.addEventListener('click',closeDrawer)
+
+function entryTitle(e){
+  if(e.entryType==='roll') return `Pellicule ${e.filmFormat||''}`.trim()
+  if(e.entryType==='sheet') return `Plan-film ${e.filmFormat||''}`.trim()
+  return e.boxType || 'Support'
+}
+
+function entrySubtitle(e){
+  const expiry = e.expiresYear || ((e.expiresAt||'').match(/^\d{4}/)||[])[0] || ''
+  if(e.entryType==='roll'){
+    const parts = [e.stockName||'', e.cameraName||'', e.frameCount!=null?`${e.shotsTaken||0}/${e.frameCount} vues`:'' ].filter(Boolean)
+    if(expiry) parts.push(`exp. ${expiry}`)
+    if(e.ratedIso) parts.push(`ISO ${e.ratedIso}`)
+    return parts.join(' · ')
+  }
+  if(e.entryType==='sheet'){
+    const parts = [e.stockName||'', e.cameraName||'', e.sheetCount!=null?`${e.sheetsExposed||0}/${e.sheetCount} plans`:'' ].filter(Boolean)
+    if(expiry) parts.push(`exp. ${expiry}`)
+    if(e.ratedIso) parts.push(`ISO ${e.ratedIso}`)
+    return parts.join(' · ')
+  }
+  return `${e.boxType||''} · ${e.holeDiameter_mm||''}mm · ${e.paperType||''}`
+}
+
+function entryChips(e){
+  if(e.entryType==='roll'){
+    return [
+      { label:'Pellicule' },
+      { label:e.materialType==='paper'?'Papier':'Film' },
+      { label:e.filmFormat||'' },
+      { label:e.stockName||'' }
+    ].filter(c=>c.label)
+  }
+  if(e.entryType==='sheet'){
+    return [
+      { label:'Plan-film' },
+      { label:e.materialType==='paper'?'Papier':'Film' },
+      { label:e.filmFormat||'' },
+      { label:e.stockName||'' }
+    ].filter(c=>c.label)
+  }
+  return [
+    { label:e.boxType||'' },
+    { label:e.holeDiameter_mm?`${e.holeDiameter_mm}mm`:'' },
+    { label:e.paperType||'' }
+  ].filter(c=>c.label)
+}
+
+function continueLabel(e){
+  const status = (e.supportStatus||'active')==='fridge' ? 'frigo' : 'en cours'
+  return [e.stockName||'Pellicule', e.cameraName||'Sans boitier', `${e.shotsTaken||0}/${e.frameCount||0}`, status]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function renderContinueSelect(items){
+  const select = document.getElementById('continueSelect')
+  if(!select) return
+  const previous = selectedContinueId
+  select.innerHTML = ''
+  items.forEach(e=>{
+    const option = document.createElement('option')
+    option.value = e.id
+    option.textContent = continueLabel(e)
+    select.appendChild(option)
+  })
+  if(items.some(e=>e.id===previous)) selectedContinueId = previous
+  else selectedContinueId = items[0]?.id || null
+  if(selectedContinueId) select.value = selectedContinueId
+}
+
+function renderContinueSummary(entry){
+  const target = document.getElementById('continueSummary')
+  if(!target || !entry) return
+  const chips = entryChips(entry)
+  target.innerHTML = `
+    <div class="entry-head">
+      <div class="entry-info">
+        <div class="entry-date">${entryTitle(entry)}</div>
+        ${chips.map(ch=>`<span class="entry-chip">${ch.label}</span>`).join('')}
+        ${entrySubtitle(entry)?`<div class="entry-meta">${entrySubtitle(entry)}</div>`:''}
+        <div class="entry-meta">Prochaine vue: ${Math.min((entry.shotsTaken||0)+1, entry.frameCount||0)} / ${entry.frameCount||0}</div>
+        ${(entry.supportStatus||'active')==='fridge'?`<div class="status-badge fridge">Pellicule actuellement au frigo</div>`:''}
+        ${entry.notes?`<div class="entry-notes">${entry.notes}</div>`:''}
+      </div>
+    </div>`
+}
+
+function renderContinueCurrentFrame(entry){
+  const target = document.getElementById('continueCurrentFrame')
+  if(!target || !entry) return
+  const currentFrame = Math.min((entry.shotsTaken||0) + 1, entry.frameCount||0)
+  const totalFrames = entry.frameCount || 0
+  target.innerHTML = `
+    <div>
+      <div class="current-frame-label">Vue en cours</div>
+      <div class="current-frame-sub">Pellicule selectionnee: ${entry.stockName||'sans nom'}</div>
+    </div>
+    <div>
+      <div class="current-frame-value">#${currentFrame}</div>
+      <div class="current-frame-sub">sur ${totalFrames}</div>
+    </div>`
+}
+
+function renderContinueShots(entry){
+  const target = document.getElementById('continueShotsList')
+  if(!target) return
+  const logs = (entry?.shotsLog || []).slice().reverse()
+  if(!logs.length){
+    target.innerHTML = '<div class="empty" style="padding:20px 12px">Aucune vue detaillee enregistree pour le moment</div>'
+    return
+  }
+  target.innerHTML = logs.map(log=>`
+    <div class="shot-log">
+      <div class="shot-log-head">
+        <span>Vue ${log.frameNumber || '?'}</span>
+        <span>${new Date(log.createdAt).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})} ${new Date(log.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span>
+      </div>
+      <div class="shot-log-meta">${[log.cameraName, log.shutterSpeed, log.aperture, log.lightConditions, log.lens].filter(Boolean).join(' · ')}</div>
+      ${log.notes?`<div class="shot-log-notes">${log.notes}</div>`:''}
+    </div>`).join('')
+}
+
+function getArchiveEntries(entries){
+  return (entries||[]).filter(e=>!e.deletedAt && (e.supportStatus||'active')==='finished')
+}
+
+function getTrashEntries(entries){
+  return (entries||[]).filter(e=>!!e.deletedAt)
+}
+
+function getArchiveFolderKey(entry){
+  const ts = archiveView==='trash'
+    ? (entry.deletedAt || entry.finishedAt || entry.createdAt || Date.now())
+    : (entry.finishedAt || entry.createdAt || Date.now())
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+function loadArchiveFolderNames(){
+  try{
+    const raw = localStorage.getItem(LS_ARCHIVE_FOLDERS_KEY)
+    const obj = raw ? JSON.parse(raw) : {}
+    if(obj && typeof obj==='object') archiveFolderNames = obj
+    else archiveFolderNames = {}
+  }catch(e){ archiveFolderNames = {} }
+}
+
+function saveArchiveFolderNames(){
+  try{ localStorage.setItem(LS_ARCHIVE_FOLDERS_KEY, JSON.stringify(archiveFolderNames||{})) }catch(e){}
+}
+
+function archiveFolderLabel(key){
+  if(archiveFolderNames[key]) return archiveFolderNames[key]
+  const [y,m,d] = key.split('-')
+  return `Dossier ${d}/${m}/${y}`
+}
+
+function archiveEntryTypeLabel(entry){
+  if(entry.entryType==='roll') return 'Pellicule'
+  if(entry.entryType==='sheet') return 'Plan-film'
+  if(entry.entryType==='paper') return 'Papier'
+  return 'Support'
+}
+
+function trashDaysRemaining(entry){
+  if(!entry.deletedAt) return null
+  const ms = TRASH_RETENTION_DAYS * 86400000 - (Date.now() - Number(entry.deletedAt))
+  return Math.max(0, Math.ceil(ms / 86400000))
+}
+
+function renderArchivePanel(){
+  const entries = archiveView==='trash' ? getTrashEntries(allEntries) : getArchiveEntries(allEntries)
+  const grouped = new Map()
+  entries.forEach(e=>{
+    const key = getArchiveFolderKey(e)
+    if(!grouped.has(key)) grouped.set(key, [])
+    grouped.get(key).push(e)
+  })
+
+  const folders = Array.from(grouped.keys()).sort((a,b)=>b.localeCompare(a))
+  const select = document.getElementById('archiveFolderSelect')
+  const empty = document.getElementById('archiveEmpty')
+  const workspace = document.getElementById('archiveWorkspace')
+  const summary = document.getElementById('archiveFolderSummary')
+  const list = document.getElementById('archiveEntriesList')
+  const renameInput = document.getElementById('archiveFolderNameInput')
+  if(!select || !empty || !workspace || !summary || !list || !renameInput) return
+
+  select.innerHTML = ''
+  folders.forEach(key=>{
+    const option = document.createElement('option')
+    option.value = key
+    option.textContent = archiveFolderLabel(key)
+    select.appendChild(option)
+  })
+
+  if(folders.includes(selectedArchiveFolder)){}
+  else selectedArchiveFolder = folders[0] || null
+
+  if(!selectedArchiveFolder){
+    empty.textContent = archiveView==='trash' ? 'Aucune entrée dans la corbeille' : 'Aucune archive terminee pour le moment'
+    empty.style.display = 'block'
+    workspace.style.display = 'none'
+    return
+  }
+
+  select.value = selectedArchiveFolder
+  empty.style.display = 'none'
+  workspace.style.display = 'flex'
+
+  const dayEntries = (grouped.get(selectedArchiveFolder)||[]).slice().sort((a,b)=>{
+    const ta = archiveView==='trash' ? (a.deletedAt||a.finishedAt||a.createdAt||0) : (a.finishedAt||a.createdAt||0)
+    const tb = archiveView==='trash' ? (b.deletedAt||b.finishedAt||b.createdAt||0) : (b.finishedAt||b.createdAt||0)
+    return tb - ta
+  })
+  renameInput.value = archiveFolderNames[selectedArchiveFolder] || ''
+  summary.innerHTML = `<div class="entry-date">${archiveView==='trash' ? 'Corbeille' : archiveFolderLabel(selectedArchiveFolder)}</div><div class="entry-meta">${dayEntries.length} élément(s) ${archiveView==='trash' ? 'supprimé(s)' : 'terminé(s)'}</div>`
+
+  list.innerHTML = ''
+  dayEntries.forEach(e=>{
+    const doneTs = archiveView==='trash' ? (e.deletedAt || e.finishedAt || e.createdAt || Date.now()) : (e.finishedAt || e.createdAt || Date.now())
+    const doneLabel = new Date(doneTs).toLocaleString('fr-FR')
+    const progress = e.entryType==='roll' ? `${e.shotsTaken||0}/${e.frameCount||0}` : `${e.sheetsExposed||0}/${e.sheetCount||0}`
+    const card = document.createElement('div')
+    card.className = 'shot-log'
+    card.innerHTML = `<div class="shot-log-head"><span>${archiveEntryTypeLabel(e)} · ${e.stockName||''}</span><span>${doneLabel}</span></div><div class="shot-log-meta">${e.filmFormat||''} · ${progress}${e.cameraName?` · ${e.cameraName}`:''}</div>${archiveView==='trash' ? `<div class="status-badge trash">Suppression définitive dans ${trashDaysRemaining(e)} j</div>` : ''}${e.notes?`<div class="shot-log-notes">${e.notes}</div>`:''}<div class="entry-actions"></div>`
+    const actions = card.querySelector('.entry-actions')
+    const mk = (label, fn, danger)=>{ const b=document.createElement('button'); b.className='btn-xs'+(danger?' danger':''); b.textContent=label; b.onclick=fn; return b }
+    if(archiveView==='trash'){
+      actions.appendChild(mk('♻ Restaurer', async()=>{
+        const i = allEntries.findIndex(x=>x.id===e.id)
+        if(i===-1) return
+        allEntries[i].deletedAt = null
+        allEntries[i].updatedAt = Date.now()
+        cancelDeleteJobs(e.id)
+        await saveAndSync(allEntries)
+      }))
+      actions.appendChild(mk('🗑 Définitif', async()=>{
+        if(!confirm('Supprimer définitivement cette entrée de l\'app ?')) return
+        cancelDeleteJobs(e.id)
+        await saveAndSync(allEntries.filter(x=>x.id!==e.id))
+      }, true))
+    } else {
+      actions.appendChild(mk('✏️ Modifier', ()=>openEditModal(e.id)))
+      if(e.myDriveFinal&&e.myDriveFinal.webViewLink) actions.appendChild(mk('🔗 Drive', ()=>window.open(e.myDriveFinal.webViewLink, '_blank')))
+      actions.appendChild(mk('🗑 Corbeille', async()=>{
+        if(!confirm('Envoyer cette entrée dans la corbeille ?')) return
+        const i = allEntries.findIndex(x=>x.id===e.id)
+        if(i===-1) return
+        allEntries[i].deletedAt = Date.now()
+        allEntries[i].updatedAt = Date.now()
+        await saveAndSync(allEntries)
+      }, true))
+      actions.appendChild(mk('☁🗑 Suppr partout', async()=>{
+        if(!confirm('Supprimer cette entrée dans l\'app et supprimer ses fichiers Drive ?')) return
+        const i = allEntries.findIndex(x=>x.id===e.id)
+        if(i===-1) return
+        allEntries[i].deletedAt = Date.now()
+        allEntries[i].updatedAt = Date.now()
+        enqueueDeleteJob(allEntries[i])
+        await saveAndSync(allEntries)
+      }, true))
+    }
+    list.appendChild(card)
+  })
+}
+
+// ── List ──────────────────────────────────────────────
+function renderList(){
+  const items = getContinueEntries(allEntries).filter(e=>!e.deletedAt)
+  const empty = document.getElementById('continueEmpty')
+  const workspace = document.getElementById('continueWorkspace')
+  const select = document.getElementById('continueSelect')
+  if(!empty || !workspace || !select) return
+  renderContinueSelect(items)
+  if(!items.length){
+    empty.textContent = 'Aucune pellicule a continuer pour le moment'
+    empty.style.display = 'block'
+    workspace.style.display = 'none'
+    select.innerHTML = ''
+    return
+  }
+  const entry = items.find(e=>e.id===selectedContinueId) || items[0]
+  selectedContinueId = entry.id
+  select.value = entry.id
+  empty.style.display = 'none'
+  workspace.style.display = 'flex'
+  renderContinueCurrentFrame(entry)
+  renderContinueSummary(entry)
+  const continueCamera = document.getElementById('continueCameraSelect')
+  const rollCameraNames = cameraNamesForContext('roll_35').concat(
+    cameraNamesForContext('roll_120').filter(n=>!cameraNamesForContext('roll_35').includes(n))
+  )
+  fillSelectOptions(continueCamera, rollCameraNames, entry.cameraName || rollCameraNames[0] || '')
+  const fridgeBtn = document.getElementById('moveToFridgeBtn')
+  if(fridgeBtn) fridgeBtn.textContent = (entry.supportStatus||'active')==='fridge' ? 'Sortir du frigo' : 'Mettre au frigo'
+  const deleteBtn = document.getElementById('continueDeleteBtn')
+  const deleteEverywhereBtn = document.getElementById('continueDeleteEverywhereBtn')
+  if(deleteBtn) deleteBtn.onclick = async()=>{
+    if(!confirm('Envoyer cette pellicule dans la corbeille ?')) return
+    const i = allEntries.findIndex(x=>x.id===entry.id)
+    if(i===-1) return
+    allEntries[i].deletedAt = Date.now()
+    allEntries[i].updatedAt = Date.now()
+    await saveAndSync(allEntries)
+  }
+  if(deleteEverywhereBtn) deleteEverywhereBtn.onclick = async()=>{
+    if(!confirm('Supprimer cette pellicule dans l\'app et supprimer ses fichiers Drive ?')) return
+    const i = allEntries.findIndex(x=>x.id===entry.id)
+    if(i===-1) return
+    allEntries[i].deletedAt = Date.now()
+    allEntries[i].updatedAt = Date.now()
+    enqueueDeleteJob(allEntries[i])
+    await saveAndSync(allEntries)
+  }
+  renderContinueShots(entry)
+}
+function renderStorageBar(){
+  const sz=new Blob([JSON.stringify(allEntries)]).size
+  const activeCount = allEntries.filter(e=>!e.deletedAt && e.entryType==='roll' && (e.supportStatus||'active')!=='finished').length
+  document.getElementById('storageBar').textContent=`${activeCount} pellicule(s) entamee(s) · ~${(sz/1024).toFixed(1)} KB${gToken?' · ✓ Drive':''}`
+}
+function renderAll(){renderList();renderArchivePanel();renderStorageBar();updateDriveInfo();updateTrashInfo()}
+
+// ── Photos ────────────────────────────────────────────
+function renderPreviews(){}
+function compressFile(file,maxWidth=1200,quality=0.75){
+  return new Promise((resolve,reject)=>{
+    const img=new Image(),fr=new FileReader()
+    fr.onload=()=>{img.onload=()=>{
+      let w=img.width,h=img.height
+      if(w>maxWidth){h=Math.round(h*maxWidth/w);w=maxWidth}
+      const c=document.createElement('canvas');c.width=w;c.height=h
+      c.getContext('2d').drawImage(img,0,0,w,h)
+      resolve(c.toDataURL('image/jpeg',quality))
+    };img.onerror=reject;img.src=fr.result};fr.onerror=reject;fr.readAsDataURL(file)
+  })
+}
+async function openFinalUpload(id){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*'
+  inp.onchange=async ev=>{
+    const f=ev.target.files&&ev.target.files[0]; if(!f) return
+    const d=await compressFile(f,1200,0.75)
+    const i=allEntries.findIndex(x=>x.id===id)
+    if(i!==-1){allEntries[i].finalPhotoDataURL=d;allEntries[i].updatedAt=Date.now();await saveAndSync(allEntries);toast('Photo finale enregistrée ✓')}
+  }; inp.click()
+}
+
+// ── Edit modal ────────────────────────────────────────
+let editEntryId = null
+let editPhotos  = []   // copy of photos array being edited
+
+function openEditModal(id){
+  const e = allEntries.find(x=>x.id===id); if(!e) return
+  editEntryId = id
+  editPhotos  = (e.photos||[]).slice()
+
+  // Populate fields
+  const sel = v => o => o.value===String(v)
+  ;[...document.getElementById('editBoxType').options].forEach(o=>o.selected=(o.value===e.boxType))
+  ;[...document.getElementById('editHole').options].forEach(o=>o.selected=(o.value===String(e.holeDiameter_mm)))
+  ;[...document.getElementById('editPaperType').options].forEach(o=>o.selected=(o.value===(e.paperType||'')))
+  document.getElementById('editNotes').value = e.notes||''
+  // orientation
+  if(e.orientationDeg||e.orientation==='libre'){
+    document.getElementById('editOrientationSelect').value = 'libre'
+    document.getElementById('editOrientationDegree').style.display='block'
+    document.getElementById('editOrientationDegree').value = e.orientationDeg||''
+  } else if(e.orientation){
+    document.getElementById('editOrientationSelect').value = e.orientation
+    document.getElementById('editOrientationDegree').style.display='none'
+    document.getElementById('editOrientationDegree').value = ''
+  } else {
+    document.getElementById('editOrientationSelect').value = 'N'
+    document.getElementById('editOrientationDegree').style.display='none'
+    document.getElementById('editOrientationDegree').value = ''
+  }
+
+  renderEditPreviews()
+  document.getElementById('editOverlay').classList.add('open')
+  document.getElementById('editSheet').classList.add('open')
+}
+function closeEditModal(){
+  document.getElementById('editOverlay').classList.remove('open')
+  document.getElementById('editSheet').classList.remove('open')
+  editEntryId=null; editPhotos=[]
+}
+function renderEditPreviews(){
+  const p=document.getElementById('editPhotosPreview'); p.innerHTML=''
+  editPhotos.forEach((d,i)=>{
+    const h=document.createElement('div'); h.className='photo-thumb'
+    const img=document.createElement('img'); img.src=d
+    const del=document.createElement('button'); del.className='del'; del.textContent='×'
+    del.onclick=()=>{editPhotos.splice(i,1);renderEditPreviews()}
+    h.appendChild(img); h.appendChild(del); p.appendChild(h)
+  })
+}
+document.getElementById('editSheetClose').addEventListener('click',closeEditModal)
+document.getElementById('editOverlay').addEventListener('click',closeEditModal)
+document.getElementById('editAddPhotoBtn').addEventListener('click',()=>document.getElementById('editPhotoInput').click())
+document.getElementById('editPhotoInput').addEventListener('change',async ev=>{
+  for(const f of Array.from(ev.target.files||[])){
+    try{editPhotos.push(await compressFile(f,1200,0.75))}catch(e){console.error(e)}
+  }
+  ev.target.value=''; renderEditPreviews()
+})
+document.getElementById('editSaveBtn').addEventListener('click',async()=>{
+  const i = allEntries.findIndex(x=>x.id===editEntryId); if(i===-1) return
+  allEntries[i].photos       = editPhotos.slice()
+  allEntries[i].boxType      = document.getElementById('editBoxType').value
+  allEntries[i].holeDiameter_mm = Number(document.getElementById('editHole').value)
+  allEntries[i].paperType    = document.getElementById('editPaperType').value
+  allEntries[i].notes        = document.getElementById('editNotes').value
+  // orientation
+  const eo = document.getElementById('editOrientationSelect').value
+  if(eo==='libre'){
+    allEntries[i].orientation = 'libre'
+    allEntries[i].orientationDeg = Number(document.getElementById('editOrientationDegree').value) || null
+  } else {
+    allEntries[i].orientation = eo
+    delete allEntries[i].orientationDeg
+  }
+  allEntries[i].updatedAt = Date.now()
+  // If photos changed, clear Drive links for this entry so they re-upload
+  delete allEntries[i].myDrivePhotos
+  closeEditModal()
+  await saveAndSync(allEntries)
+  toast('Modifications enregistrées ✓')
+})
+
+function updateSupportTypeUI(){
+  // Roll panel is always fixed to 'roll' — just refresh selects
+  renderFormatSelect()
+  renderStockSelect()
+}
+
+function bindById(id, event, handler){
+  const el = document.getElementById(id)
+  if(el) el.addEventListener(event, handler)
+  return el
+}
+
+bindById('continueSelect', 'change', ev=>{
+  selectedContinueId = ev.target.value || null
+  renderList()
+})
+bindById('archiveFolderSelect', 'change', ev=>{
+  selectedArchiveFolder = ev.target.value || null
+  renderArchivePanel()
+})
+bindById('archiveViewArchive', 'click', ()=>{
+  archiveView = 'archive'
+  selectedArchiveFolder = null
+  document.getElementById('archiveViewArchive')?.classList.add('active')
+  document.getElementById('archiveViewTrash')?.classList.remove('active')
+  renderArchivePanel()
+})
+bindById('archiveViewTrash', 'click', ()=>{
+  archiveView = 'trash'
+  selectedArchiveFolder = null
+  document.getElementById('archiveViewTrash')?.classList.add('active')
+  document.getElementById('archiveViewArchive')?.classList.remove('active')
+  renderArchivePanel()
+})
+bindById('saveArchiveFolderNameBtn', 'click', ()=>{
+  if(!selectedArchiveFolder) return
+  const input = document.getElementById('archiveFolderNameInput')
+  const value = (input?.value||'').trim()
+  if(value) archiveFolderNames[selectedArchiveFolder] = value
+  else delete archiveFolderNames[selectedArchiveFolder]
+  saveArchiveFolderNames()
+  renderArchivePanel()
+  toast('Nom du dossier enregistre')
+})
+
+function addCameraOption(prefill){
+  const name = (prefill || prompt('Nom du nouvel appareil ?') || '').trim()
+  if(!name) return false
+  if(cameraOptions.find(c=>c.name===name)){ toast('Cet appareil existe déjà'); return false }
+  const cam = { name, formats: [] }
+  cameraOptions = sortedCameras(cameraOptions.concat(cam))
+  saveCameras(cameraOptions)
+  renderCameraSelect(name)
+  renderSpCameraSelect()
+  const continueSel = document.getElementById('continueCameraSelect')
+  if(continueSel){
+    const rollNames = cameraNamesForContext('roll_35').concat(
+      cameraNamesForContext('roll_120').filter(n=>!cameraNamesForContext('roll_35').includes(n))
+    )
+    fillSelectOptions(continueSel, rollNames, name)
+  }
+  renderSettingsPanel()
+  toast('Appareil ajouté — configure ses formats dans les réglages')
+  return true
+}
+
+bindById('addCameraBtnRoll', 'click', ()=>{ addCameraOption() })
+bindById('addCameraBtnSP', 'click', ()=>{ addCameraOption() })
+bindById('addCameraBtnContinue', 'click', ()=>{ addCameraOption() })
+
+bindById('addStockBtn', 'click', ()=>{
+  const name = (prompt('Nom du nouveau stock ?')||'').trim()
+  if(!name) return
+  const supportType = document.getElementById('supportType').value
+  if(supportType==='paper'){
+    paperStocks = uniqueSorted(paperStocks.concat(name))
+    saveRefList(LS_PAPER_STOCKS_KEY, paperStocks)
+    renderStockSelect(name)
+    toast('Papier ajoute')
+  } else {
+    filmStocks = uniqueSorted(filmStocks.concat(name))
+    saveRefList(LS_FILM_STOCKS_KEY, filmStocks)
+    renderStockSelect(name)
+    toast('Pellicule / plan-film ajoute')
+  }
+})
+
+initReferenceLists()
+loadArchiveFolderNames()
+loadPractices()
+initSettingsAccordion()
+renderPracticesCheckboxes()
+applyPracticeVisibility()
+updateSettingsSummaries()
+renderSpPanel()
+renderShutterSelect()
+renderApertureSelect()
+
+bindById('stopMode_full',  'click', ()=>setStopMode('full'))
+bindById('stopMode_half',  'click', ()=>setStopMode('half'))
+bindById('stopMode_third', 'click', ()=>setStopMode('third'))
+// re-filter camera list when roll format changes (35mm ↔ 120)
+bindById('filmFormat', 'change', ()=> renderCameraSelect())
+// re-filter camera list when SP format changes
+bindById('spFormat', 'change', ()=> renderSpCameraSelect())
+bindById('shotShutter', 'change', e=>{
+  const bulbRow = document.getElementById('bulbRow')
+  if(bulbRow) bulbRow.style.display = e.target.value==='Bulb' ? 'flex' : 'none'
+  if(e.target.value!=='Bulb'){ const s=document.getElementById('shotBulbSec'); if(s) s.value='' }
+})
+
+function getSelectedContinueEntry(){
+  return allEntries.find(e=>e.id===selectedContinueId) || null
+}
+
+document.getElementById('saveShotBtn').addEventListener('click', async()=>{
+  const entry = getSelectedContinueEntry()
+  if(!entry) return
+  const index = allEntries.findIndex(e=>e.id===entry.id)
+  if(index===-1) return
+  const nextFrame = (allEntries[index].shotsTaken||0) + 1
+  const totalFrames = allEntries[index].frameCount || 0
+  if(totalFrames && nextFrame > totalFrames){
+    toast('Cette pellicule est deja complete')
+    return
+  }
+  const cameraName = document.getElementById('continueCameraSelect').value.trim()
+  const shot = {
+    id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    createdAt: Date.now(),
+    frameNumber: nextFrame,
+    cameraName,
+    shutterSpeed: (()=>{ const v=document.getElementById('shotShutter').value.trim(); if(v==='Bulb'){ const s=document.getElementById('shotBulbSec').value.trim(); return s ? `Bulb ${s}s` : 'Bulb' } return v })(),
+    aperture: document.getElementById('shotAperture').value.trim(),
+    lightConditions: document.getElementById('shotLight').value.trim(),
+    lens: document.getElementById('shotLens').value.trim(),
+    notes: document.getElementById('shotNotes').value.trim()
+  }
+  allEntries[index].cameraName = cameraName
+  allEntries[index].shotsTaken = nextFrame
+  allEntries[index].supportStatus = 'active'
+  allEntries[index].shotsLog = (allEntries[index].shotsLog || []).concat(shot)
+  if(totalFrames && nextFrame >= totalFrames) allEntries[index].supportStatus = 'finished'
+  allEntries[index].updatedAt = Date.now()
+  await saveAndSync(allEntries)
+  document.getElementById('shotShutter').value = ''
+  const _br = document.getElementById('bulbRow'); if(_br) _br.style.display='none'
+  document.getElementById('shotBulbSec').value = ''
+  document.getElementById('shotAperture').value = ''
+  document.getElementById('shotLight').value = ''
+  document.getElementById('shotLens').value = ''
+  document.getElementById('shotNotes').value = ''
+  toast('Vue enregistree')
+})
+
+document.getElementById('moveToFridgeBtn').addEventListener('click', async()=>{
+  const entry = getSelectedContinueEntry()
+  if(!entry) return
+  const index = allEntries.findIndex(e=>e.id===entry.id)
+  if(index===-1) return
+  allEntries[index].cameraName = document.getElementById('continueCameraSelect').value.trim()
+  allEntries[index].supportStatus = (allEntries[index].supportStatus||'active')==='fridge' ? 'active' : 'fridge'
+  allEntries[index].updatedAt = Date.now()
+  await saveAndSync(allEntries)
+  toast((allEntries[index].supportStatus||'active')==='fridge' ? 'Pellicule mise au frigo' : 'Pellicule reactivee')
+})
+
+document.getElementById('finishRollBtn').addEventListener('click', async()=>{
+  const entry = getSelectedContinueEntry()
+  if(!entry) return
+  const index = allEntries.findIndex(e=>e.id===entry.id)
+  if(index===-1) return
+  allEntries[index].cameraName = document.getElementById('continueCameraSelect').value.trim()
+  allEntries[index].supportStatus = 'finished'
+  allEntries[index].finishedAt = Date.now()
+  allEntries[index].updatedAt = Date.now()
+  await saveAndSync(allEntries)
+  toast('Pellicule terminee')
+})
+
+// ── Save ──────────────────────────────────────────────
+document.getElementById('saveBtn').addEventListener('click',async()=>{
+  const supportType = 'roll'
+  const stockName = document.getElementById('stockNameSelect').value.trim()
+  const materialType = inferMaterialTypeByStock(stockName) || 'film'
+  const filmFormat = document.getElementById('filmFormat').value
+  const cameraName = document.getElementById('cameraSelect').value.trim()
+  const frameCount = Number(document.getElementById('frameCount').value)
+  const shotsTaken = Number(document.getElementById('shotsTaken').value)
+  const sheetCount = 1
+  const sheetsExposed = 0
+  const expiryYearRaw = document.getElementById('expiryYear').value
+  const expiryYear = (expiryYearRaw && expiryYearRaw !== '—') ? expiryYearRaw : ''
+  const supportLocation = document.getElementById('supportLocation').value
+  const ratedIso = Number(document.getElementById('ratedIso').value)
+  if(!stockName){toast('Renseigne le stock'); return}
+  if(!cameraName){toast('Renseigne l appareil'); return}
+  if(!frameCount || frameCount<1){toast('Nombre de poses invalide'); return}
+  if(shotsTaken<0 || shotsTaken>frameCount){toast('Nombre de poses déjà prises invalide'); return}
+
+  const id=Date.now().toString(36)+Math.random().toString(36).slice(2,8)
+  const now = Date.now()
+  const entry={
+    id, createdAt:now, updatedAt:now, photos:[], location:null,
+    notes:document.getElementById('notes').value, finalPhotoDataURL:null,
+    entryType:'roll', materialType:'film',
+    supportStatus: supportLocation,
+    stockName, filmFormat, cameraName, frameCount, shotsTaken, shotsLog:[]
+  }
+  if(expiryYear) entry.expiresYear = expiryYear
+  if(ratedIso) entry.ratedIso = ratedIso
+  entry.boxType = `Pellicule ${filmFormat}`
+  entry.holeDiameter_mm = frameCount
+  entry.paperType = stockName
+
+  allEntries.push(entry)
+  await saveAndSync(allEntries)
+  document.getElementById('notes').value=''
+  renderExpiryYearSelect()
+  renderIsoSelect()
+  document.getElementById('supportLocation').value='active'
+  document.getElementById('frameCount').value='36'
+  document.getElementById('shotsTaken').value='0'
+  toast('Pellicule enregistrée ✓')
+})
+
+// ── Save SP (Plan-film / Papier) ──────────────────────
+bindById('saveBtnSP', 'click', async()=>{
+  const supportType = spSubType
+  const stockName = document.getElementById('spStock').value.trim()
+  const filmFormat = document.getElementById('spFormat').value
+  const cameraName = supportType==='paper' ? '' : document.getElementById('spCamera').value.trim()
+  const sheetCount = Number(document.getElementById('spSheetCount').value)
+  const sheetsExposed = Number(document.getElementById('spSheetsExposed').value)
+  const expiryYear = document.getElementById('spExpiryYear').value.trim()
+  const ratedIso = Number(document.getElementById('spRatedIso').value)
+  if(!stockName){ toast('Renseigne le stock'); return }
+  if(supportType==='sheet' && !cameraName){ toast('Renseigne l appareil'); return }
+  if(!sheetCount || sheetCount<1){ toast(supportType==='paper' ? 'Quantite de feuilles invalide' : 'Quantite de plans-films invalide'); return }
+  if(sheetsExposed<0 || sheetsExposed>sheetCount){ toast('Nombre deja exposes invalide'); return }
+  if(expiryYear && !/^\d{4}$/.test(expiryYear)){ toast('Annee de peremption invalide'); return }
+
+  const materialType = supportType==='paper' ? 'paper' : 'film'
+  const id = Date.now().toString(36)+Math.random().toString(36).slice(2,8)
+  const now = Date.now()
+  const entry = {
+    id, createdAt:now, updatedAt:now, photos:[], location:null,
+    notes:document.getElementById('spNotes').value, finalPhotoDataURL:null,
+    entryType:supportType, materialType,
+    supportStatus:'finished', finishedAt:now,
+    stockName, filmFormat, cameraName, sheetCount, sheetsExposed, shotsLog:[]
+  }
+  if(expiryYear) entry.expiresYear = expiryYear
+  if(ratedIso) entry.ratedIso = ratedIso
+  entry.boxType = supportType==='paper' ? `Papier ${filmFormat}` : `Plan-film ${filmFormat}`
+  entry.holeDiameter_mm = sheetCount
+  entry.paperType = stockName
+
+  allEntries.push(entry)
+  await saveAndSync(allEntries)
+  document.getElementById('spNotes').value=''
+  document.getElementById('spExpiryYear').value=''
+  document.getElementById('spRatedIso').value=''
+  document.getElementById('spSheetCount').value='1'
+  document.getElementById('spSheetsExposed').value='0'
+  toast(supportType==='paper' ? 'Papier enregistre ✓' : 'Plan-film enregistre ✓')
+})
+
+// ── Export ────────────────────────────────────────────
+document.getElementById('exportJson').addEventListener('click',()=>{
+  const b=new Blob([JSON.stringify(allEntries,null,2)],{type:'application/json'})
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='solar_entries.json';a.click()
+})
+document.getElementById('exportCsv').addEventListener('click',()=>{
+  const csv = entriesToCsv(allEntries)
+  const b = new Blob([csv], {type:'text/csv;charset=utf-8'})
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(b)
+  a.download = 'film_logger_entries.csv'
+  a.click()
+})
+document.getElementById('clearAll').addEventListener('click',async()=>{
+  if(!confirm('Envoyer TOUS les supports dans la corbeille ?'))return
+  const now = Date.now()
+  await saveAndSync(allEntries.map(e=>({ ...e, deletedAt: now, updatedAt: now })))
+})
+
+// ── Settings panel ───────────────────────────────────
+const VOIR_PLUS_STEP = 8
+
+function renderSettingsCameraList(showCount){
+  const ul = document.getElementById('settingsCameraList')
+  if(!ul) return
+  ul.innerHTML = ''
+  const items = cameraOptions
+  if(!items.length){
+    ul.innerHTML = '<li style="color:#aaa;font-size:0.85rem;padding:10px 14px">Aucun appareil</li>'
+    return
+  }
+  const visibleCount = showCount || VOIR_PLUS_STEP
+  const visible = items.slice(0, visibleCount)
+  visible.forEach(cam=>{
+    const li = document.createElement('li')
+    li.style.cssText = 'flex-direction:column;align-items:flex-start;gap:6px;padding:10px 14px'
+    const topRow = document.createElement('div')
+    topRow.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%'
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'camera-item-name'
+    nameSpan.textContent = cam.name
+    const delBtn = document.createElement('button')
+    delBtn.className = 'btn-del'
+    delBtn.textContent = '✕ Retirer'
+    delBtn.addEventListener('click', ()=>{
+      cameraOptions = cameraOptions.filter(c=>c.name!==cam.name)
+      saveCameras(cameraOptions)
+      renderCameraSelect(); renderSpCameraSelect()
+      renderSettingsPanel()
+    })
+    topRow.appendChild(nameSpan)
+    topRow.appendChild(delBtn)
+    const fmtRow = document.createElement('div')
+    fmtRow.className = 'camera-fmt-tags'
+    CAMERA_FORMAT_KEYS.forEach(fk=>{
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'fmt-tag' + (cam.formats&&cam.formats.includes(fk) ? ' on' : '')
+      btn.textContent = CAMERA_FORMAT_LABELS[fk]
+      btn.title = fk
+      btn.addEventListener('click', ()=>{
+        const idx = cameraOptions.findIndex(c=>c.name===cam.name)
+        if(idx===-1) return
+        const fmts = cameraOptions[idx].formats || []
+        cameraOptions[idx].formats = fmts.includes(fk)
+          ? fmts.filter(f=>f!==fk)
+          : fmts.concat(fk)
+        saveCameras(cameraOptions)
+        btn.classList.toggle('on', cameraOptions[idx].formats.includes(fk))
+        renderCameraSelect(); renderSpCameraSelect()
+      })
+      fmtRow.appendChild(btn)
+    })
+    li.appendChild(topRow)
+    li.appendChild(fmtRow)
+    ul.appendChild(li)
+  })
+  if(items.length > visibleCount){
+    const btn = document.createElement('button')
+    btn.className = 'voir-plus-btn'
+    const remaining = items.length - visibleCount
+    btn.textContent = `Voir ${Math.min(remaining, VOIR_PLUS_STEP)} appareil(s) de plus…`
+    btn.addEventListener('click', ()=> renderSettingsCameraList(visibleCount + VOIR_PLUS_STEP))
+    ul.appendChild(btn)
+  }
+}
+
+function renderSettingsList(ulId, items, onDelete){
+  const ul = document.getElementById(ulId)
+  if(!ul) return
+  ul.innerHTML = ''
+  if(!items.length){
+    ul.innerHTML = '<li style="color:#aaa;font-size:0.85rem;padding:10px 14px">Aucun élément</li>'
+    return
+  }
+  items.forEach(item=>{
+    const li = document.createElement('li')
+    li.innerHTML = `<span>${item}</span><button class="btn-del" data-item="${item}">✕ Retirer</button>`
+    li.querySelector('.btn-del').addEventListener('click', ()=> onDelete(item))
+    ul.appendChild(li)
+  })
+}
+
+function renderSettingsCheckList(ulId, catalogItems, activeItems, lsKey, filterText, showCount){
+  const ul = document.getElementById(ulId)
+  if(!ul) return
+  const query = normalizeForSearch(filterText)
+  const catalog = uniqueSorted([...(catalogItems||[]), ...(activeItems||[])])
+    .filter(item=>!query || normalizeForSearch(item).includes(query))
+  const activeSet = new Set(activeItems||[])
+  ul.innerHTML = ''
+  if(!catalog.length){
+    ul.innerHTML = '<li style="color:#aaa;font-size:0.85rem;padding:10px 14px">Aucun résultat</li>'
+    return
+  }
+  const visibleCount = showCount || VOIR_PLUS_STEP
+  const visible = catalog.slice(0, visibleCount)
+  visible.forEach(item=>{
+    const li = document.createElement('li')
+    const label = document.createElement('label')
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = activeSet.has(item)
+    const span = document.createElement('span')
+    span.textContent = item
+    label.appendChild(checkbox)
+    label.appendChild(span)
+    li.appendChild(label)
+    checkbox.addEventListener('change', ()=>{
+      const next = checkbox.checked
+        ? uniqueSorted((activeItems||[]).concat(item))
+        : (activeItems||[]).filter(v=>v!==item)
+      if(lsKey===LS_FILM_STOCKS_KEY) filmStocks = next
+      if(lsKey===LS_PAPER_STOCKS_KEY) paperStocks = next
+      saveRefList(lsKey, next)
+      renderStockSelect()
+      renderSettingsPanel()
+      toast('Réglages enregistrés ✓', 1200)
+    })
+    ul.appendChild(li)
+  })
+  if(catalog.length > visibleCount){
+    const btn = document.createElement('button')
+    btn.className = 'voir-plus-btn'
+    const remaining = catalog.length - visibleCount
+    btn.textContent = `Voir ${Math.min(remaining, VOIR_PLUS_STEP)} de plus…`
+    btn.addEventListener('click', ()=> renderSettingsCheckList(ulId, catalogItems, activeItems, lsKey, filterText, visibleCount + VOIR_PLUS_STEP))
+    ul.appendChild(btn)
+  }
+}
+
+function renderSettingsPanel(){
+  const filmFilterInput = document.getElementById('settingsFilmFilter')
+  const paperFilterInput = document.getElementById('settingsPaperFilter')
+  if(filmFilterInput) filmFilterInput.value = settingsFilmFilter
+  if(paperFilterInput) paperFilterInput.value = settingsPaperFilter
+
+  renderSettingsCameraList()
+  renderSettingsCheckList('settingsFilmList', CATALOG_FILM_STOCKS, filmStocks, LS_FILM_STOCKS_KEY, settingsFilmFilter)
+  renderSettingsCheckList('settingsPaperList', CATALOG_PAPER_STOCKS, paperStocks, LS_PAPER_STOCKS_KEY, settingsPaperFilter)
+  updateSettingsSummaries()
+}
+
+function updateSettingsSummaries(){
+  const practices = []
+  if(userPractices['roll_35']) practices.push('35')
+  if(userPractices['roll_120']) practices.push('120')
+  if(userPractices['sheet_4x5']) practices.push('4x5')
+  if(userPractices['sheet_5x7']) practices.push('5x7')
+  if(userPractices['sheet_8x10']) practices.push('8x10')
+  if(userPractices['paper']) practices.push('papier')
+  const sp = document.getElementById('settingsSummaryPractices')
+  if(sp) sp.textContent = practices.length ? practices.join(', ') : 'Aucune pratique'
+
+  const sc = document.getElementById('settingsSummaryCameras')
+  if(sc) sc.textContent = `${(cameraOptions||[]).length} appareil(s)`
+
+  const sf = document.getElementById('settingsSummaryFilms')
+  if(sf) sf.textContent = `${(filmStocks||[]).length} sélectionnée(s)`
+
+  const spp = document.getElementById('settingsSummaryPapers')
+  if(spp) spp.textContent = `${(paperStocks||[]).length} sélectionné(s)`
+}
+
+const LS_SETTINGS_OPEN_SECTION = 'settings_open_section_v1'
+
+function setSettingsSection(sectionName){
+  const sections = document.querySelectorAll('#panelSettings .settings-section[data-settings-section]')
+  sections.forEach(sec=>{
+    const open = sec.dataset.settingsSection === sectionName
+    sec.classList.toggle('collapsed', !open)
+    const btn = sec.querySelector('.settings-section-head')
+    if(btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false')
+  })
+  try{ localStorage.setItem(LS_SETTINGS_OPEN_SECTION, sectionName) }catch{}
+}
+
+function initSettingsAccordion(){
+  document.querySelectorAll('#panelSettings [data-settings-toggle]').forEach(btn=>{
+    btn.addEventListener('click', ()=>setSettingsSection(btn.dataset.settingsToggle))
+  })
+  // restore last open section
+  try{
+    const saved = localStorage.getItem(LS_SETTINGS_OPEN_SECTION)
+    if(saved) setSettingsSection(saved)
+  }catch{}
+}
+
+function settingsAddItem(inputId, getter, setter, lsKey, renderFn){
+  const input = document.getElementById(inputId)
+  const val = (input.value||'').trim()
+  if(!val){ input.focus(); return }
+  const list = getter()
+  if(list.includes(val)){ toast('Déjà dans la liste'); input.select(); return }
+  const updated = uniqueSorted([...list, val])
+  setter(updated)
+  saveRefList(lsKey, updated)
+  renderFn()
+  renderSettingsPanel()
+  input.value = ''
+  input.focus()
+  toast('Ajouté ✓')
+}
+
+// ── Tabs ──────────────────────────────────────────────
+function switchTab(tabId){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tabId))
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===tabId))
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  switchTab(t.dataset.tab)
+  if(t.dataset.tab==='panelSettings'){ renderSettingsPanel(); renderPracticesCheckboxes(); setSettingsSection('practices') }
+  if(t.dataset.tab==='panelSessions') renderArchivePanel()
+  if(t.dataset.tab==='panelSheetPaper') renderSpPanel()
+}))
+
+// Practice checkboxes
+PRACTICE_KEYS.forEach(k=>{
+  bindById('prac_'+k, 'change', e=>{
+    userPractices[k] = e.target.checked
+    savePractices()
+    applyPracticeVisibility()
+    updateSettingsSummaries()
+  })
+})
+
+// SP sub-type buttons
+bindById('spBtnSheet', 'click', ()=>setSpSubType('sheet'))
+bindById('spBtnPaper', 'click', ()=>setSpSubType('paper'))
+
+// SP add stock button
+bindById('spAddStockBtn', 'click', ()=>{
+  const name = (prompt(spSubType==='paper' ? 'Nom du nouveau papier ?' : 'Nom du nouveau plan-film ?')||'').trim()
+  if(!name) return
+  if(spSubType==='paper'){
+    paperStocks = uniqueSorted(paperStocks.concat(name))
+    saveRefList(LS_PAPER_STOCKS_KEY, paperStocks)
+  } else {
+    filmStocks = uniqueSorted(filmStocks.concat(name))
+    saveRefList(LS_FILM_STOCKS_KEY, filmStocks)
+  }
+  renderSpStockSelect(name)
+  toast('Ajouté ✓')
+})
+
+bindById('settingsCameraAdd', 'click', ()=>{
+  const input = document.getElementById('settingsCameraInput')
+  if(!input) return
+  const value = (input.value||'').trim()
+  if(!value){ input.focus(); return }
+  if(cameraOptions.find(c=>c.name===value)){ toast('Cet appareil existe déjà'); input.select(); return }
+  const fmtChecks = document.querySelectorAll('#cameraAddFormats input[type=checkbox]:checked')
+  const formats = Array.from(fmtChecks).map(cb=>cb.value)
+  const cam = { name: value, formats }
+  cameraOptions = sortedCameras(cameraOptions.concat(cam))
+  saveCameras(cameraOptions)
+  renderCameraSelect(); renderSpCameraSelect()
+  renderSettingsPanel()
+  updateSettingsSummaries()
+  input.value = ''
+  // reset checkboxes
+  document.querySelectorAll('#cameraAddFormats input[type=checkbox]').forEach(cb=>{ cb.checked=false })
+  input.focus()
+  toast('Appareil ajouté ✓')
+})
+bindById('settingsCameraInput', 'keydown', e=>{ if(e.key==='Enter') document.getElementById('settingsCameraAdd')?.click() })
+
+bindById('settingsFilmAdd', 'click', ()=>{
+  settingsAddItem('settingsFilmInput', ()=>filmStocks, v=>{ filmStocks=v }, LS_FILM_STOCKS_KEY, renderStockSelect)
+})
+bindById('settingsFilmInput', 'keydown', e=>{ if(e.key==='Enter') document.getElementById('settingsFilmAdd')?.click() })
+
+bindById('settingsPaperAdd', 'click', ()=>{
+  settingsAddItem('settingsPaperInput', ()=>paperStocks, v=>{ paperStocks=v }, LS_PAPER_STOCKS_KEY, renderStockSelect)
+})
+bindById('settingsPaperInput', 'keydown', e=>{ if(e.key==='Enter') document.getElementById('settingsPaperAdd')?.click() })
+bindById('settingsFilmFilter', 'input', e=>{
+  settingsFilmFilter = e.target.value || ''
+  renderSettingsPanel()
+})
+bindById('settingsPaperFilter', 'input', e=>{
+  settingsPaperFilter = e.target.value || ''
+  renderSettingsPanel()
+})
+
+// ── UI bindings: orientation inputs, sorting ─
+// Orientation show/hide degree input
+const _oSel = document.getElementById('orientationSelect')
+const _oDeg = document.getElementById('orientationDegree')
+if(_oSel && _oDeg){
+  _oSel.addEventListener('change', function(){
+    _oDeg.style.display = this.value==='libre' ? 'block' : 'none'
+    if(this.value!=='libre') _oDeg.value=''
+  })
+}
+const _eSel = document.getElementById('editOrientationSelect')
+const _eDeg = document.getElementById('editOrientationDegree')
+if(_eSel && _eDeg){
+  _eSel.addEventListener('change', function(){
+    _eDeg.style.display = this.value==='libre' ? 'block' : 'none'
+    if(this.value!=='libre') _eDeg.value=''
+  })
+}
+
+// Sort
+function setSort(s){
+  currentSort = s
+  renderList()
+}
+const _sortSel = document.getElementById('sortSelect')
+if(_sortSel) _sortSel.addEventListener('change', ()=>setSort(_sortSel.value))
+
+// ── Init ──────────────────────────────────────────────
+;(async()=>{
+  allEntries = await localLoad()
+  await localSave(allEntries)
+  renderAll()
+  // fallback polling si onGoogleLibraryLoad ne se déclenche pas (rare)
+  const waitGsi = setInterval(()=>{
+    if(typeof google !== 'undefined' && google.accounts){ clearInterval(waitGsi); initGoogleAuth() }
+  }, 400)
+  setTimeout(()=>clearInterval(waitGsi), 15000)
+})()
+</script>
+</body>
+</html>
