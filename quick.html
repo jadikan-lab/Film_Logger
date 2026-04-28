@@ -165,6 +165,41 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
 .camera-formats-add input[type=checkbox]{width:15px;height:15px;accent-color:var(--blue)}
 .camera-item-name{flex:1;font-size:0.92rem;color:#222;font-weight:600}
 .camera-item-fmt{flex:1}
+/* compact camera rows (settings) */
+.camera-row{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #f0f0f0;min-height:40px;cursor:pointer}
+.camera-row:hover{background:#fffbf3}
+.camera-row.expanded{background:#f9f5ea}
+.camera-row-star{font-size:0.88rem;flex-shrink:0;cursor:pointer;padding:2px;opacity:.4;line-height:1}
+.camera-row-star.on{opacity:1;color:#c9962a}
+.camera-row-name{flex:1;font-size:0.88rem;font-weight:600;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.camera-row-vis{font-size:0.88rem;flex-shrink:0;cursor:pointer;padding:2px;line-height:1}
+.camera-row-chevron{font-size:0.7rem;color:#aaa;flex-shrink:0;transition:transform .2s;line-height:1}
+.camera-row.expanded .camera-row-chevron{transform:rotate(180deg)}
+.camera-expand-body{background:#f9f5ea;padding:10px 14px 12px;border-bottom:1px solid #e8dfc8}
+.camera-expand-label{display:block;font-size:0.7rem;font-weight:700;color:#667;text-transform:uppercase;letter-spacing:.05em;margin:8px 0 5px}
+.camera-expand-label:first-child{margin-top:0}
+.camera-lens-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.camera-lens-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;background:#e8edfd;border:1px solid #b8c8f0;font-size:0.72rem;font-weight:700;color:#3a56b0}
+.camera-lens-chip button{background:none;border:none;color:#8090c0;cursor:pointer;font-size:0.85rem;padding:0;line-height:1}
+.camera-lens-assoc{display:flex;gap:6px;margin-top:4px}
+.camera-lens-assoc input{flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:8px;font-size:0.82rem;background:#fffdf8;outline:none}
+.camera-lens-assoc input:focus{border-color:var(--blue)}
+.camera-lens-assoc button{padding:5px 9px;border-radius:8px;border:1px solid rgba(64,90,132,.18);background:rgba(64,90,132,.08);color:var(--blue);font-size:0.76rem;font-weight:700;cursor:pointer}
+.camera-expand-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px solid #e2d9c4}
+.camera-expand-actions button{font-size:0.74rem;padding:5px 9px;border-radius:7px;cursor:pointer;border:1px solid var(--border);background:#fffefb;color:#333}
+.camera-expand-actions button.danger{color:var(--red);border-color:var(--red)}
+/* geolocalisation */
+.geo-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:8px;border:1.5px solid rgba(64,90,132,.18);background:rgba(64,90,132,.06);color:var(--blue);font-size:0.78rem;font-weight:700;cursor:pointer}
+.geo-btn:active{filter:brightness(.96)}
+.geo-status{font-size:0.72rem;color:#6c7485;line-height:1.25;min-height:16px}
+.geo-status.ok{color:var(--green)}
+.geo-status.warn{color:var(--red)}
+.continue-geo-row{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+/* carte mini */
+.map-card{display:none;background:#fffbf2;border:1px solid var(--border);border-radius:14px;padding:8px;flex-direction:column;gap:8px}
+.map-summary-chips{display:flex;flex-wrap:wrap;gap:6px}
+.map-summary-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;background:#f0eadc;border:1px solid rgba(64,90,132,.12);font-size:0.7rem;font-weight:700;color:#5b6476}
+.mini-map{height:220px;border-radius:12px;overflow:hidden;border:1px solid rgba(64,90,132,.14)}
 .settings-list li{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid #f0f0f0;font-size:0.92rem;min-height:46px}
 .settings-list li:last-child{border-bottom:none}
 .settings-list li span{flex:1;color:#333}
@@ -593,6 +628,14 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
           <select id="continueCameraSelect"></select>
           <button id="addCameraBtnContinue" class="btn-mini" type="button" title="Ajouter un appareil">+</button>
         </div>
+        <div class="continue-geo-row">
+          <button id="captureRollLocationBtn" class="geo-btn" type="button">📍 Position de la pellicule</button>
+          <div id="rollLocationStatus" class="geo-status">Aucune position enregistrée</div>
+        </div>
+      </div>
+      <div id="continueMapCard" class="map-card">
+        <div id="continueMapSummary" class="map-summary-chips"></div>
+        <div id="continueMap" class="mini-map"></div>
       </div>
       <div class="stop-seg-row" style="margin-top:10px">
         <span class="stop-seg-label">Stops</span>
@@ -620,11 +663,16 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
       </div>
       <div class="field" style="margin-top:10px">
         <label>Objectif / focale</label>
-        <input id="shotLens" type="text" placeholder="Ex: 50mm" />
+        <input id="shotLens" type="text" list="shotLensList" placeholder="Ex: 50mm" />
+        <datalist id="shotLensList"></datalist>
       </div>
       <div class="field" style="margin-top:10px">
         <label>Notes de prise de vue</label>
         <textarea id="shotNotes" placeholder="Sujet, intention, filtre, mesure, etc."></textarea>
+      </div>
+      <div class="continue-geo-row" style="margin-top:10px">
+        <button id="captureShotLocationBtn" class="geo-btn" type="button">📍 Position de cette vue</button>
+        <div id="shotLocationStatus" class="geo-status">Aucune position préparée pour cette vue</div>
       </div>
       <div class="entry-actions" style="margin-top:12px">
         <button id="saveShotBtn" class="btn-xs">Enregistrer cette vue</button>
@@ -735,6 +783,22 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
     </div>
   </div>
 
+  <!-- Objectifs -->
+  <div class="settings-section collapsed" data-settings-section="lenses">
+    <button class="settings-section-head" data-settings-toggle="lenses" aria-expanded="false" type="button">
+      <span class="settings-head-title">🔭 Objectifs</span>
+      <span id="settingsSummaryLenses" class="settings-head-summary"></span>
+      <span class="settings-head-chevron">▾</span>
+    </button>
+    <div class="settings-section-body">
+    <ul class="settings-list" id="settingsLensList"></ul>
+    <div class="settings-add-row">
+      <input id="settingsLensInput" type="text" placeholder="Nom de l’objectif (ex: 50mm f/1.4)…" style="flex:1" />
+      <button id="settingsLensAdd">+ Ajouter</button>
+    </div>
+    </div>
+  </div>
+
   <!-- Pellicules / Supports -->
   <div class="settings-section collapsed" data-settings-section="films">
     <button class="settings-section-head" data-settings-toggle="films" aria-expanded="false" type="button">
@@ -826,6 +890,7 @@ body{font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);
 
 <!-- Toast -->
 <div id="toast"></div>
+<datalist id="lensPoolDatalist"></datalist>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -844,6 +909,7 @@ const UPLOAD_CONCURRENCY = 3   // parallel uploads at a time
 
 const LS_CAMERAS_KEY = 'ref_cameras_v2'
 const LS_CAMERAS_KEY_V1 = 'ref_cameras_v1' // legacy migration only
+const LS_LENSES_KEY = 'ref_lenses_v1'
 const LS_FILM_STOCKS_KEY = 'ref_film_stocks_v1'
 const LS_PAPER_STOCKS_KEY = 'ref_paper_stocks_v1'
 const LS_ARCHIVE_FOLDERS_KEY = 'archive_folder_names_v1'
@@ -947,6 +1013,8 @@ let allEntries   = []
 let pendingPhotos = []
 let lastDriveSync = null
 let cameraOptions = []
+let lensPool = []
+let settingsCameraExpanded = null
 let filmStocks = []
 let paperStocks = []
 let settingsFilmFilter = ''
@@ -960,7 +1028,86 @@ function filterFilmLoggerEntries(entries){
   return Array.isArray(entries) ? entries.filter(isFilmLoggerEntry) : []
 }
 
-// ── Expiry years ──────────────────────────────────────
+// ── Géolocalisation helpers ───────────────────────────
+function cloneLocation(location){
+  if(!location) return null
+  return {
+    lat: Number(location.lat),
+    lng: Number(location.lng),
+    accuracy: location.accuracy == null ? null : Number(location.accuracy),
+    capturedAt: Number(location.capturedAt || Date.now())
+  }
+}
+
+function formatLocationSummary(location){
+  if(!location) return 'Aucune position enregistrée'
+  const coords = `${Number(location.lat).toFixed(5)}, ${Number(location.lng).toFixed(5)}`
+  const accuracy = location.accuracy ? ` ±${Math.round(location.accuracy)} m` : ''
+  return `${coords}${accuracy}`
+}
+
+function formatLocationTime(ts){
+  if(!ts) return ''
+  const d = new Date(Number(ts))
+  return d.toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
+}
+
+function geolocationErrorMessage(err){
+  if(!err) return 'Géolocalisation indisponible'
+  if(err.message === 'unsupported') return 'Géolocalisation non disponible sur cet appareil'
+  if(err.code === 1) return 'Géolocalisation refusée'
+  if(err.code === 2) return 'Position introuvable'
+  if(err.code === 3) return 'Géolocalisation trop lente'
+  return 'Impossible de récupérer la position'
+}
+
+function requestCurrentLocation(){
+  if(!('geolocation' in navigator)) return Promise.reject(new Error('unsupported'))
+  return new Promise((resolve, reject)=>{
+    navigator.geolocation.getCurrentPosition(
+      pos=>resolve({
+        lat: Number(pos.coords.latitude.toFixed(6)),
+        lng: Number(pos.coords.longitude.toFixed(6)),
+        accuracy: pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null,
+        capturedAt: Date.now()
+      }),
+      reject,
+      { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+    )
+  })
+}
+
+function renderRollLocationStatus(){
+  const el = document.getElementById('rollLocationStatus')
+  if(!el) return
+  el.className = 'geo-status' + (pendingRollLocation ? ' ok' : '')
+  el.textContent = pendingRollLocation
+    ? `Position prête · ${formatLocationSummary(pendingRollLocation)}`
+    : 'Aucune position enregistrée'
+}
+
+function getLatestShotLocation(entry){
+  const logs = (entry?.shotsLog || []).slice().reverse()
+  return logs.find(log=>log && log.location)?.location || null
+}
+
+function renderShotLocationStatus(entry){
+  const el = document.getElementById('shotLocationStatus')
+  if(!el) return
+  const source = pendingShotLocation || getLatestShotLocation(entry)
+  if(pendingShotLocation){
+    el.className = 'geo-status ok'
+    el.textContent = `Position prête · ${formatLocationSummary(source)}`
+    return
+  }
+  if(source){
+    el.className = 'geo-status ok'
+    el.textContent = `Dernière position enregistrée · ${formatLocationTime(source.capturedAt)}`
+    return
+  }
+  el.className = 'geo-status'
+  el.textContent = 'Aucune position préparée pour cette vue'
+}
 const EXPIRY_YEARS = (()=>{
   const y=new Date().getFullYear(), arr=['—']
   for(let i=y-30; i<=2030; i++) arr.push(String(i))
@@ -1014,6 +1161,10 @@ let selectedContinueId = null
 let selectedArchiveFolder = null
 let archiveFolderNames = {}
 let archiveView = 'archive'
+let pendingRollLocation = null
+let pendingShotLocation = null
+let continueMap = null
+let continueMapLayer = null
 // practices + SP sub-type state
 let userPractices = {}
 let spSubType = 'sheet' // 'sheet' | 'paper'
@@ -1084,13 +1235,23 @@ function saveRefList(key, arr){
   try{ localStorage.setItem(key, JSON.stringify(arr)) }catch(e){}
 }
 
-// ── Camera objects {name, formats[]} ─────────────────
+// ── Camera objects {id, name, formats[], isPrimary, visible, lensIds[]} ─────
+function migrateCameraRecord(cam){
+  return {
+    id: cam.id || `cam_${(cam.name||'').replace(/\s+/g,'_').toLowerCase()}_${Math.random().toString(36).slice(2,5)}`,
+    name: cam.name || '',
+    formats: Array.isArray(cam.formats) ? cam.formats : [],
+    isPrimary: !!cam.isPrimary,
+    visible: cam.visible !== false,
+    lensIds: Array.isArray(cam.lensIds) ? cam.lensIds : []
+  }
+}
 function loadCameras(){
   try{
     const raw = localStorage.getItem(LS_CAMERAS_KEY)
     if(raw){
       const arr = JSON.parse(raw)
-      if(Array.isArray(arr) && arr.length) return arr
+      if(Array.isArray(arr) && arr.length) return arr.map(migrateCameraRecord)
     }
   }catch{}
   // migrate from v1 (strings)
@@ -1099,23 +1260,41 @@ function loadCameras(){
     if(raw){
       const arr = JSON.parse(raw)
       if(Array.isArray(arr) && arr.length){
-        const migrated = arr.map(v=>typeof v==='string' ? {name:v, formats:[]} : v)
+        const migrated = arr.map(v=>migrateCameraRecord(typeof v==='string' ? {name:v, formats:[]} : v))
         saveCameras(migrated)
         return migrated
       }
     }
   }catch{}
-  return DEFAULT_CAMERAS.map(c=>({...c, formats:[...(c.formats||[])]}))
+  return DEFAULT_CAMERAS.map(c=>migrateCameraRecord({...c}))
 }
 function saveCameras(arr){
   try{ localStorage.setItem(LS_CAMERAS_KEY, JSON.stringify(arr)) }catch{}
 }
+function loadLenses(){
+  try{
+    const raw = localStorage.getItem(LS_LENSES_KEY)
+    if(raw){
+      const arr = JSON.parse(raw)
+      if(Array.isArray(arr)) return arr.filter(l=>l && l.id && l.name)
+    }
+  }catch{}
+  return []
+}
+function saveLenses(arr){
+  try{ localStorage.setItem(LS_LENSES_KEY, JSON.stringify(arr)) }catch{}
+}
 function sortedCameras(arr){
-  return [...(arr||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||'','fr'))
+  return [...(arr||[])].sort((a,b)=>{
+    if(a.isPrimary && !b.isPrimary) return -1
+    if(!a.isPrimary && b.isPrimary) return 1
+    return (a.name||'').localeCompare(b.name||'','fr')
+  })
 }
 function camerasForContext(ctx){
   // ctx: one of CAMERA_FORMAT_KEYS — cameras with no formats show everywhere
-  return cameraOptions.filter(c=>!c.formats||!c.formats.length||c.formats.includes(ctx))
+  // hidden cameras (visible===false) excluded from selects
+  return cameraOptions.filter(c=>c.visible!==false && (!c.formats||!c.formats.length||c.formats.includes(ctx)))
 }
 function cameraNamesForContext(ctx){
   return camerasForContext(ctx).map(c=>c.name)
@@ -1194,6 +1373,7 @@ function inferMaterialTypeByStock(stockName){
 
 function initReferenceLists(){
   cameraOptions = sortedCameras(loadCameras())
+  lensPool = loadLenses()
   filmStocks = uniqueSorted(loadRefList(LS_FILM_STOCKS_KEY, DEFAULT_FILM_STOCKS))
   paperStocks = uniqueSorted(loadRefList(LS_PAPER_STOCKS_KEY, DEFAULT_PAPER_STOCKS))
   renderCameraSelect()
@@ -2048,6 +2228,60 @@ function renderContinueShots(entry){
     </div>`).join('')
 }
 
+function buildContinueMapPoints(entry){
+  const points = []
+  const startLocation = cloneLocation(entry?.startLocation || entry?.location)
+  if(startLocation){
+    points.push({ type:'start', label:'Début de pellicule', location:startLocation, timestamp:startLocation.capturedAt || entry.createdAt || Date.now() })
+  }
+  ;(entry?.shotsLog || []).forEach(log=>{
+    if(!log || !log.location) return
+    points.push({
+      type:'shot', label:`Vue ${log.frameNumber || '?'}`, frameNumber: log.frameNumber || null,
+      location: cloneLocation(log.location), timestamp: log.location.capturedAt || log.createdAt || Date.now()
+    })
+  })
+  return points
+}
+
+function renderContinueMap(entry){
+  const card = document.getElementById('continueMapCard')
+  const summary = document.getElementById('continueMapSummary')
+  const mapEl = document.getElementById('continueMap')
+  if(!card || !summary || !mapEl) return
+  const points = buildContinueMapPoints(entry)
+  if(!points.length){ card.style.display='none'; summary.innerHTML=''; return }
+  card.style.display = 'flex'
+  const shotPoints = points.filter(p=>p.type==='shot')
+  const distinctPlaces = new Set(points.map(p=>`${p.location.lat.toFixed(3)}:${p.location.lng.toFixed(3)}`)).size
+  summary.innerHTML = `
+    <span class="map-summary-chip">${shotPoints.length} vue(s) géolocalisée(s)</span>
+    <span class="map-summary-chip">${distinctPlaces} lieu(x) distinct(s)</span>
+    ${points.find(p=>p.type==='start') ? '<span class="map-summary-chip">Départ enregistré</span>' : ''}
+  `
+  if(typeof L === 'undefined'){ mapEl.innerHTML='<div style="padding:20px">Carte indisponible</div>'; return }
+  if(!continueMap){
+    continueMap = L.map(mapEl, { zoomControl:false, attributionControl:false })
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(continueMap)
+  }
+  if(continueMapLayer) continueMapLayer.remove()
+  continueMapLayer = L.layerGroup().addTo(continueMap)
+  const bounds = []
+  points.forEach(point=>{
+    const latlng = [point.location.lat, point.location.lng]
+    bounds.push(latlng)
+    const isStart = point.type==='start'
+    L.circleMarker(latlng, { radius:isStart?7:6, color:isStart?'#b38b4d':'#405a84', weight:2, fillColor:isStart?'#d9bf7b':'#6f8dbd', fillOpacity:0.95 })
+      .bindPopup(`${point.label}<br>${formatLocationTime(point.timestamp)}<br>${formatLocationSummary(point.location)}`)
+      .addTo(continueMapLayer)
+  })
+  const orderedShots = shotPoints.slice().sort((a,b)=>(a.frameNumber||0)-(b.frameNumber||0)).map(p=>[p.location.lat,p.location.lng])
+  if(orderedShots.length>1){ L.polyline(orderedShots,{color:'#405a84',weight:2,opacity:0.7,dashArray:'4 5'}).addTo(continueMapLayer) }
+  if(bounds.length===1) continueMap.setView(bounds[0],14)
+  else continueMap.fitBounds(bounds,{padding:[20,20]})
+  setTimeout(()=>continueMap&&continueMap.invalidateSize(),0)
+}
+
 function getArchiveEntries(entries){
   return (entries||[]).filter(e=>!e.deletedAt && (e.supportStatus||'active')==='finished')
 }
@@ -2242,6 +2476,9 @@ function renderList(){
     await saveAndSync(allEntries)
   }
   renderContinueShots(entry)
+  renderShotLocationStatus(entry)
+  renderContinueMap(entry)
+  updateShotLensDatalist(entry.cameraName)
 }
 function renderStorageBar(){
   const sz=new Blob([JSON.stringify(allEntries)]).size
@@ -2370,8 +2607,39 @@ function bindById(id, event, handler){
 
 bindById('continueSelect', 'change', ev=>{
   selectedContinueId = ev.target.value || null
+  pendingShotLocation = null
   renderList()
 })
+bindById('continueCameraSelect', 'change', ev=>{
+  updateShotLensDatalist(ev.target.value)
+})
+
+bindById('captureRollLocationBtn', 'click', async()=>{
+  const btn = document.getElementById('captureRollLocationBtn')
+  if(btn) btn.textContent = '⏳ Localisation…'
+  try{
+    pendingRollLocation = await requestCurrentLocation()
+    renderRollLocationStatus()
+  }catch(err){
+    toast(geolocationErrorMessage(err))
+  } finally {
+    if(btn) btn.textContent = '📍 Position de la pellicule'
+  }
+})
+
+bindById('captureShotLocationBtn', 'click', async()=>{
+  const btn = document.getElementById('captureShotLocationBtn')
+  if(btn) btn.textContent = '⏳ Localisation…'
+  try{
+    pendingShotLocation = await requestCurrentLocation()
+    renderShotLocationStatus(getSelectedContinueEntry())
+  }catch(err){
+    toast(geolocationErrorMessage(err))
+  } finally {
+    if(btn) btn.textContent = '📍 Position de cette vue'
+  }
+})
+
 bindById('archiveFolderSelect', 'change', ev=>{
   selectedArchiveFolder = ev.target.value || null
   renderArchivePanel()
@@ -2405,7 +2673,14 @@ function addCameraOption(prefill){
   const name = (prefill || prompt('Nom du nouvel appareil ?') || '').trim()
   if(!name) return false
   if(cameraOptions.find(c=>c.name===name)){ toast('Cet appareil existe déjà'); return false }
-  const cam = { name, formats: [] }
+  const cam = {
+    id: `cam_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,5)}`,
+    name,
+    formats: [],
+    isPrimary: !cameraOptions.length,
+    visible: true,
+    lensIds: []
+  }
   cameraOptions = sortedCameras(cameraOptions.concat(cam))
   saveCameras(cameraOptions)
   renderCameraSelect(name)
@@ -2450,6 +2725,7 @@ initSettingsAccordion()
 renderPracticesCheckboxes()
 applyPracticeVisibility()
 updateSettingsSummaries()
+renderRollLocationStatus()
 renderSpPanel()
 renderShutterSelect()
 renderApertureSelect()
@@ -2492,6 +2768,7 @@ document.getElementById('saveShotBtn').addEventListener('click', async()=>{
     aperture: document.getElementById('shotAperture').value.trim(),
     lightConditions: document.getElementById('shotLight').value.trim(),
     lens: document.getElementById('shotLens').value.trim(),
+    location: pendingShotLocation ? cloneLocation(pendingShotLocation) : null,
     notes: document.getElementById('shotNotes').value.trim()
   }
   allEntries[index].cameraName = cameraName
@@ -2509,6 +2786,8 @@ document.getElementById('saveShotBtn').addEventListener('click', async()=>{
   document.getElementById('shotLens').value = ''
   document.getElementById('shotNotes').value = ''
   toast('Vue enregistree')
+  pendingShotLocation = null
+  renderShotLocationStatus(allEntries[index])
 })
 
 document.getElementById('moveToFridgeBtn').addEventListener('click', async()=>{
@@ -2571,6 +2850,8 @@ document.getElementById('saveBtn').addEventListener('click',async()=>{
   entry.holeDiameter_mm = frameCount
   entry.paperType = stockName
 
+  if(pendingRollLocation){ entry.startLocation = cloneLocation(pendingRollLocation); entry.location = cloneLocation(pendingRollLocation) }
+
   allEntries.push(entry)
   await saveAndSync(allEntries)
   document.getElementById('notes').value=''
@@ -2580,6 +2861,8 @@ document.getElementById('saveBtn').addEventListener('click',async()=>{
   document.getElementById('frameCount').value='36'
   document.getElementById('shotsTaken').value='0'
   toast('Pellicule enregistrée ✓')
+  pendingRollLocation = null
+  renderRollLocationStatus()
 })
 
 // ── Save SP (Plan-film / Papier) ──────────────────────
@@ -2646,69 +2929,186 @@ document.getElementById('clearAll').addEventListener('click',async()=>{
 // ── Settings panel ───────────────────────────────────
 const VOIR_PLUS_STEP = 8
 
-function renderSettingsCameraList(showCount){
+function renderSettingsCameraList(){
   const ul = document.getElementById('settingsCameraList')
   if(!ul) return
   ul.innerHTML = ''
   const items = cameraOptions
   if(!items.length){
-    ul.innerHTML = '<li style="color:#aaa;font-size:0.85rem;padding:10px 14px">Aucun appareil</li>'
+    ul.innerHTML = '<li style="color:#aaa;font-size:0.85rem;padding:10px 14px">Aucun appareil — ajoutez-en un ci-dessous</li>'
     return
   }
-  const visibleCount = showCount || VOIR_PLUS_STEP
-  const visible = items.slice(0, visibleCount)
-  visible.forEach(cam=>{
-    const li = document.createElement('li')
-    li.style.cssText = 'flex-direction:column;align-items:flex-start;gap:6px;padding:10px 14px'
-    const topRow = document.createElement('div')
-    topRow.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%'
-    const nameSpan = document.createElement('span')
-    nameSpan.className = 'camera-item-name'
-    nameSpan.textContent = cam.name
-    const delBtn = document.createElement('button')
-    delBtn.className = 'btn-del'
-    delBtn.textContent = '✕ Retirer'
-    delBtn.addEventListener('click', ()=>{
-      cameraOptions = cameraOptions.filter(c=>c.name!==cam.name)
+  items.forEach(cam=>{
+    const isExpanded = settingsCameraExpanded === cam.id
+    const rowLi = document.createElement('li')
+    rowLi.style.cssText = 'flex-direction:column;align-items:stretch;gap:0;padding:0;border-bottom:none'
+
+    const row = document.createElement('div')
+    row.className = 'camera-row' + (isExpanded ? ' expanded' : '')
+
+    const star = document.createElement('span')
+    star.className = 'camera-row-star' + (cam.isPrimary ? ' on' : '')
+    star.title = cam.isPrimary ? 'Appareil principal' : 'Définir comme principal'
+    star.textContent = '★'
+    star.addEventListener('click', e=>{
+      e.stopPropagation()
+      const wasPrimary = cam.isPrimary
+      cameraOptions.forEach(c=>{ c.isPrimary = false })
+      if(!wasPrimary){
+        const idx = cameraOptions.findIndex(c=>c.id===cam.id)
+        if(idx !== -1) cameraOptions[idx].isPrimary = true
+      }
+      cameraOptions = sortedCameras(cameraOptions)
       saveCameras(cameraOptions)
       renderCameraSelect(); renderSpCameraSelect()
-      renderSettingsPanel()
+      renderSettingsCameraList()
     })
-    topRow.appendChild(nameSpan)
-    topRow.appendChild(delBtn)
-    const fmtRow = document.createElement('div')
-    fmtRow.className = 'camera-fmt-tags'
-    CAMERA_FORMAT_KEYS.forEach(fk=>{
-      const btn = document.createElement('button')
-      btn.type = 'button'
-      btn.className = 'fmt-tag' + (cam.formats&&cam.formats.includes(fk) ? ' on' : '')
-      btn.textContent = CAMERA_FORMAT_LABELS[fk]
-      btn.title = fk
-      btn.addEventListener('click', ()=>{
-        const idx = cameraOptions.findIndex(c=>c.name===cam.name)
-        if(idx===-1) return
-        const fmts = cameraOptions[idx].formats || []
-        cameraOptions[idx].formats = fmts.includes(fk)
-          ? fmts.filter(f=>f!==fk)
-          : fmts.concat(fk)
-        saveCameras(cameraOptions)
-        btn.classList.toggle('on', cameraOptions[idx].formats.includes(fk))
-        renderCameraSelect(); renderSpCameraSelect()
+
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'camera-row-name'
+    nameSpan.textContent = cam.name + (cam.isPrimary ? ' · principal' : '')
+
+    const vis = document.createElement('span')
+    vis.className = 'camera-row-vis'
+    vis.title = cam.visible !== false ? 'Visible dans les sélecteurs (cliquer pour masquer)' : 'Masqué des sélecteurs (cliquer pour afficher)'
+    vis.textContent = cam.visible !== false ? '👁' : '🚫'
+    vis.style.opacity = cam.visible !== false ? '0.65' : '0.35'
+    vis.addEventListener('click', e=>{
+      e.stopPropagation()
+      const idx = cameraOptions.findIndex(c=>c.id===cam.id)
+      if(idx === -1) return
+      cameraOptions[idx].visible = cameraOptions[idx].visible === false ? true : false
+      saveCameras(cameraOptions)
+      renderCameraSelect(); renderSpCameraSelect()
+      renderSettingsCameraList()
+    })
+
+    const chevron = document.createElement('span')
+    chevron.className = 'camera-row-chevron'
+    chevron.textContent = '▼'
+
+    row.appendChild(star)
+    row.appendChild(nameSpan)
+    row.appendChild(vis)
+    row.appendChild(chevron)
+    row.addEventListener('click', ()=>{
+      settingsCameraExpanded = isExpanded ? null : cam.id
+      renderSettingsCameraList()
+    })
+    rowLi.appendChild(row)
+
+    if(isExpanded){
+      const body = document.createElement('div')
+      body.className = 'camera-expand-body'
+
+      const fmtLabel = document.createElement('span')
+      fmtLabel.className = 'camera-expand-label'
+      fmtLabel.textContent = 'Formats compatibles'
+      body.appendChild(fmtLabel)
+      const fmtRow = document.createElement('div')
+      fmtRow.className = 'camera-fmt-tags'
+      CAMERA_FORMAT_KEYS.forEach(fk=>{
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'fmt-tag' + (cam.formats&&cam.formats.includes(fk) ? ' on' : '')
+        btn.textContent = CAMERA_FORMAT_LABELS[fk]
+        btn.addEventListener('click', ()=>{
+          const idx = cameraOptions.findIndex(c=>c.id===cam.id)
+          if(idx===-1) return
+          const fmts = cameraOptions[idx].formats || []
+          cameraOptions[idx].formats = fmts.includes(fk) ? fmts.filter(f=>f!==fk) : fmts.concat(fk)
+          saveCameras(cameraOptions)
+          btn.classList.toggle('on', cameraOptions[idx].formats.includes(fk))
+          renderCameraSelect(); renderSpCameraSelect()
+        })
+        fmtRow.appendChild(btn)
       })
-      fmtRow.appendChild(btn)
-    })
-    li.appendChild(topRow)
-    li.appendChild(fmtRow)
-    ul.appendChild(li)
+      body.appendChild(fmtRow)
+
+      const lensLabel = document.createElement('span')
+      lensLabel.className = 'camera-expand-label'
+      lensLabel.textContent = 'Objectifs associés'
+      body.appendChild(lensLabel)
+
+      if(lensPool.length === 0){
+        const hint = document.createElement('p')
+        hint.style.cssText = 'font-size:0.74rem;color:#aaa;margin:0 0 4px'
+        hint.textContent = 'Ajoutez des objectifs dans la section Objectifs pour les associer ici.'
+        body.appendChild(hint)
+      } else {
+        const chipsDiv = document.createElement('div')
+        chipsDiv.className = 'camera-lens-chips'
+        const camLenses = lensPool.filter(l=>(cam.lensIds||[]).includes(l.id))
+        if(!camLenses.length){
+          chipsDiv.innerHTML = '<span style="font-size:0.74rem;color:#aaa">Aucun objectif associé</span>'
+        } else {
+          camLenses.forEach(lens=>{
+            const chip = document.createElement('span')
+            chip.className = 'camera-lens-chip'
+            chip.innerHTML = `${lens.name} <button title="Dissocier">✕</button>`
+            chip.querySelector('button').addEventListener('click', ()=>{
+              const idx = cameraOptions.findIndex(c=>c.id===cam.id)
+              if(idx===-1) return
+              cameraOptions[idx].lensIds = (cameraOptions[idx].lensIds||[]).filter(id=>id!==lens.id)
+              saveCameras(cameraOptions)
+              renderSettingsCameraList()
+              updateShotLensDatalist()
+            })
+            chipsDiv.appendChild(chip)
+          })
+        }
+        body.appendChild(chipsDiv)
+        const availLenses = lensPool.filter(l=>!(cam.lensIds||[]).includes(l.id))
+        if(availLenses.length > 0){
+          const assocDiv = document.createElement('div')
+          assocDiv.className = 'camera-lens-assoc'
+          const assocInput = document.createElement('input')
+          assocInput.setAttribute('list', 'lensPoolDatalist')
+          assocInput.placeholder = 'Associer un objectif du pool…'
+          const assocBtn = document.createElement('button')
+          assocBtn.type = 'button'
+          assocBtn.textContent = '+ Lier'
+          assocBtn.addEventListener('click', ()=>{
+            const val = assocInput.value.trim()
+            const lens = lensPool.find(l=>l.name===val)
+            if(!lens){ toast('Objectif introuvable dans le pool'); return }
+            const idx = cameraOptions.findIndex(c=>c.id===cam.id)
+            if(idx===-1) return
+            const cur = cameraOptions[idx].lensIds || []
+            if(cur.includes(lens.id)) return
+            cameraOptions[idx].lensIds = cur.concat(lens.id)
+            saveCameras(cameraOptions)
+            assocInput.value = ''
+            renderSettingsCameraList()
+            updateShotLensDatalist()
+          })
+          assocInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); assocBtn.click() } })
+          assocDiv.appendChild(assocInput)
+          assocDiv.appendChild(assocBtn)
+          body.appendChild(assocDiv)
+        }
+      }
+
+      const actDiv = document.createElement('div')
+      actDiv.className = 'camera-expand-actions'
+      const delBtn = document.createElement('button')
+      delBtn.className = 'danger'
+      delBtn.textContent = '✕ Supprimer cet appareil'
+      delBtn.addEventListener('click', ()=>{
+        if(!confirm(`Supprimer "${cam.name}" de votre liste ?`)) return
+        cameraOptions = cameraOptions.filter(c=>c.id!==cam.id)
+        settingsCameraExpanded = null
+        saveCameras(cameraOptions)
+        renderCameraSelect(); renderSpCameraSelect()
+        renderSettingsPanel()
+        updateSettingsSummaries()
+      })
+      actDiv.appendChild(delBtn)
+      body.appendChild(actDiv)
+      rowLi.appendChild(body)
+    }
+    ul.appendChild(rowLi)
   })
-  if(items.length > visibleCount){
-    const btn = document.createElement('button')
-    btn.className = 'voir-plus-btn'
-    const remaining = items.length - visibleCount
-    btn.textContent = `Voir ${Math.min(remaining, VOIR_PLUS_STEP)} appareil(s) de plus…`
-    btn.addEventListener('click', ()=> renderSettingsCameraList(visibleCount + VOIR_PLUS_STEP))
-    ul.appendChild(btn)
-  }
 }
 
 function renderSettingsList(ulId, items, onDelete){
@@ -2782,9 +3182,47 @@ function renderSettingsPanel(){
   if(paperFilterInput) paperFilterInput.value = settingsPaperFilter
 
   renderSettingsCameraList()
+  renderSettingsLensList()
   renderSettingsCheckList('settingsFilmList', CATALOG_FILM_STOCKS, filmStocks, LS_FILM_STOCKS_KEY, settingsFilmFilter)
   renderSettingsCheckList('settingsPaperList', CATALOG_PAPER_STOCKS, paperStocks, LS_PAPER_STOCKS_KEY, settingsPaperFilter)
   updateSettingsSummaries()
+}
+
+function renderSettingsLensList(){
+  const ul = document.getElementById('settingsLensList')
+  if(!ul) return
+  ul.innerHTML = ''
+  if(!lensPool.length){
+    ul.innerHTML = '<li style="color:#aaa;font-size:0.85rem;padding:10px 14px">Aucun objectif — ajoutez-en un ci-dessous</li>'
+    return
+  }
+  lensPool.forEach(lens=>{
+    const li = document.createElement('li')
+    li.innerHTML = `<span>${lens.name}</span><button class="btn-del" data-id="${lens.id}">✕ Retirer</button>`
+    li.querySelector('.btn-del').addEventListener('click', ()=>{
+      cameraOptions.forEach(c=>{ c.lensIds = (c.lensIds||[]).filter(id=>id!==lens.id) })
+      saveCameras(cameraOptions)
+      lensPool = lensPool.filter(l=>l.id!==lens.id)
+      saveLenses(lensPool)
+      renderSettingsLensList()
+      renderSettingsCameraList()
+      updateSettingsSummaries()
+      updateShotLensDatalist()
+    })
+    ul.appendChild(li)
+  })
+  const dl = document.getElementById('lensPoolDatalist')
+  if(dl) dl.innerHTML = lensPool.map(l=>`<option value="${l.name}">`).join('')
+}
+
+function updateShotLensDatalist(cameraName){
+  const dl = document.getElementById('shotLensList')
+  if(!dl) return
+  const name = cameraName || document.getElementById('continueCameraSelect')?.value || ''
+  const cam = cameraOptions.find(c=>c.name===name)
+  const ids = cam?.lensIds || []
+  const lenses = ids.length ? lensPool.filter(l=>ids.includes(l.id)) : lensPool
+  dl.innerHTML = lenses.map(l=>`<option value="${l.name}">`).join('')
 }
 
 function updateSettingsSummaries(){
@@ -2799,7 +3237,10 @@ function updateSettingsSummaries(){
   if(sp) sp.textContent = practices.length ? practices.join(', ') : 'Aucune pratique'
 
   const sc = document.getElementById('settingsSummaryCameras')
-  if(sc) sc.textContent = `${(cameraOptions||[]).length} appareil(s)`
+  if(sc) sc.textContent = `${(cameraOptions||[]).filter(c=>c.visible!==false).length}/${(cameraOptions||[]).length} affiché(s)`
+
+  const sl = document.getElementById('settingsSummaryLenses')
+  if(sl) sl.textContent = `${(lensPool||[]).length} objectif(s)`
 
   const sf = document.getElementById('settingsSummaryFilms')
   if(sf) sf.textContent = `${(filmStocks||[]).length} sélectionnée(s)`
@@ -2897,19 +3338,45 @@ bindById('settingsCameraAdd', 'click', ()=>{
   if(cameraOptions.find(c=>c.name===value)){ toast('Cet appareil existe déjà'); input.select(); return }
   const fmtChecks = document.querySelectorAll('#cameraAddFormats input[type=checkbox]:checked')
   const formats = Array.from(fmtChecks).map(cb=>cb.value)
-  const cam = { name: value, formats }
+  const cam = {
+    id: `cam_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,5)}`,
+    name: value,
+    formats,
+    isPrimary: !cameraOptions.length,
+    visible: true,
+    lensIds: []
+  }
   cameraOptions = sortedCameras(cameraOptions.concat(cam))
   saveCameras(cameraOptions)
   renderCameraSelect(); renderSpCameraSelect()
   renderSettingsPanel()
   updateSettingsSummaries()
   input.value = ''
-  // reset checkboxes
   document.querySelectorAll('#cameraAddFormats input[type=checkbox]').forEach(cb=>{ cb.checked=false })
   input.focus()
   toast('Appareil ajouté ✓')
 })
 bindById('settingsCameraInput', 'keydown', e=>{ if(e.key==='Enter') document.getElementById('settingsCameraAdd')?.click() })
+
+bindById('settingsLensAdd', 'click', ()=>{
+  const input = document.getElementById('settingsLensInput')
+  if(!input) return
+  const value = (input.value||'').trim()
+  if(!value){ input.focus(); return }
+  if(lensPool.find(l=>l.name===value)){ toast('Cet objectif existe déjà'); input.select(); return }
+  const lens = {
+    id: `lens_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,5)}`,
+    name: value
+  }
+  lensPool = [...lensPool, lens].sort((a,b)=>a.name.localeCompare(b.name,'fr'))
+  saveLenses(lensPool)
+  renderSettingsLensList()
+  updateSettingsSummaries()
+  input.value = ''
+  input.focus()
+  toast('Objectif ajouté ✓')
+})
+bindById('settingsLensInput', 'keydown', e=>{ if(e.key==='Enter') document.getElementById('settingsLensAdd')?.click() })
 
 bindById('settingsFilmAdd', 'click', ()=>{
   settingsAddItem('settingsFilmInput', ()=>filmStocks, v=>{ filmStocks=v }, LS_FILM_STOCKS_KEY, renderStockSelect)
